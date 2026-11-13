@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -13,20 +13,28 @@ import { Feather } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { showAlert } from "../services/alert";
 
+// Validates the email address format.
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Allows letters, spaces, apostrophes, and hyphens in names.
 const nameRegex = /^[A-Za-zÀ-ÿ\s'-]+$/;
 
+// Reusable password input with a visibility toggle and Enter-key support.
 const PasswordInput = ({
   value,
   setValue,
   visible,
   setVisible,
   placeholder,
+  inputRef,
+  returnKeyType,
+  onSubmitEditing,
 }) => (
   <View style={styles.inputContainer}>
     <Feather name="lock" size={18} color="#8995A6" />
 
     <TextInput
+      ref={inputRef}
       style={styles.input}
       value={value}
       onChangeText={setValue}
@@ -38,6 +46,8 @@ const PasswordInput = ({
       autoComplete="off"
       textContentType="none"
       importantForAutofill="no"
+      returnKeyType={returnKeyType}
+      onSubmitEditing={onSubmitEditing}
     />
 
     <TouchableOpacity
@@ -54,6 +64,7 @@ const PasswordInput = ({
   </View>
 );
 
+// Validates registration details and creates a Supabase account.
 export default function RegisterScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
@@ -67,6 +78,13 @@ export default function RegisterScreen({ navigation }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // References allow Enter to focus the next input.
+  const fullNameRef = useRef(null);
+  const emailRef = useRef(null);
+  const passwordRef = useRef(null);
+  const confirmRef = useRef(null);
+
+  // Validates the fields and registers the user through Supabase.
   const register = async () => {
     const cleanName = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
@@ -138,6 +156,7 @@ export default function RegisterScreen({ navigation }) {
 
       console.log("REGISTER SUCCESS:", data);
 
+      // Clears the registration form after successful account creation.
       setFullName("");
       setEmail("");
       setPassword("");
@@ -147,9 +166,8 @@ export default function RegisterScreen({ navigation }) {
 
       showAlert(
         "Account Created",
-          "Your account was created. Please check your email and click the confirmation link before signing in."
+        "Your account was created. Please check your email and click the confirmation link before signing in."
       );
-
     } catch (error) {
       console.log("REGISTER ERROR:", error);
 
@@ -206,7 +224,7 @@ export default function RegisterScreen({ navigation }) {
           </View>
 
           <View style={[styles.card, isWeb && styles.webCard]}>
-            
+
             <View style={styles.field}>
               <Text style={styles.label}>Full Name</Text>
 
@@ -218,6 +236,7 @@ export default function RegisterScreen({ navigation }) {
                 />
 
                 <TextInput
+                  ref={fullNameRef}
                   style={styles.input}
                   value={fullName}
                   onChangeText={setFullName}
@@ -226,6 +245,8 @@ export default function RegisterScreen({ navigation }) {
                   autoCapitalize="words"
                   autoCorrect={false}
                   autoComplete="off"
+                  returnKeyType="next"
+                  onSubmitEditing={() => emailRef.current?.focus()}
                 />
               </View>
             </View>
@@ -243,6 +264,7 @@ export default function RegisterScreen({ navigation }) {
                 />
 
                 <TextInput
+                  ref={emailRef}
                   style={styles.input}
                   value={email}
                   onChangeText={setEmail}
@@ -254,6 +276,8 @@ export default function RegisterScreen({ navigation }) {
                   autoComplete="off"
                   textContentType="none"
                   importantForAutofill="no"
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
                 />
               </View>
             </View>
@@ -269,6 +293,9 @@ export default function RegisterScreen({ navigation }) {
                 visible={showPassword}
                 setVisible={setShowPassword}
                 placeholder="Enter your password"
+                inputRef={passwordRef}
+                returnKeyType="next"
+                onSubmitEditing={() => confirmRef.current?.focus()}
               />
 
               <Text style={styles.passwordHint}>
@@ -287,6 +314,9 @@ export default function RegisterScreen({ navigation }) {
                 visible={showConfirm}
                 setVisible={setShowConfirm}
                 placeholder="Re-enter your password"
+                inputRef={confirmRef}
+                returnKeyType="done"
+                onSubmitEditing={register}
               />
             </View>
 

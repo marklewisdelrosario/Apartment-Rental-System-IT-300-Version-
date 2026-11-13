@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+
 import {
   View,
   Text,
@@ -9,17 +10,22 @@ import {
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
+
 import { useFocusEffect } from "@react-navigation/native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+
 import { supabase } from "../services/supabase";
 
+// Displays the apartment listings and provides navigation to other screens.
 export default function HomeScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
 
+  // Stores the apartment listings retrieved from Supabase and tracks loading.
   const [apartments, setApartments] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Fetches apartment listings from Supabase.
   const loadApartments = async () => {
     setLoading(true);
 
@@ -35,6 +41,7 @@ export default function HomeScreen({ navigation }) {
     setLoading(false);
   };
 
+  // Reloads apartment listings whenever the Home screen comes into focus.
   useFocusEffect(
     useCallback(() => {
       loadApartments();
@@ -79,9 +86,7 @@ export default function HomeScreen({ navigation }) {
           ]}
         >
           <View>
-            <Text style={styles.sectionTitle}>
-              Apartments
-            </Text>
+            <Text style={styles.sectionTitle}>Apartments</Text>
 
             <Text style={styles.sectionSubtitle}>
               View available and unavailable apartments
@@ -89,18 +94,13 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.countBadge}>
-            <Text style={styles.countText}>
-              {apartments.length}
-            </Text>
+            <Text style={styles.countText}>{apartments.length}</Text>
           </View>
         </View>
 
         {loading ? (
           <View style={styles.loading}>
-            <ActivityIndicator
-              size="large"
-              color="#1769E0"
-            />
+            <ActivityIndicator size="large" color="#1769E0" />
 
             <Text style={styles.loadingText}>
               Loading apartments...
@@ -108,11 +108,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         ) : apartments.length === 0 ? (
           <View style={styles.empty}>
-            <Feather
-              name="home"
-              size={40}
-              color="#B8C4D4"
-            />
+            <Feather name="home" size={40} color="#B8C4D4" />
 
             <Text style={styles.emptyTitle}>
               No apartments found
@@ -130,29 +126,16 @@ export default function HomeScreen({ navigation }) {
             ]}
           >
             {apartments.map((apartment) => {
-              const isAvailable =
-                apartment.status === "Available";
+              const isAvailable = apartment.status === "Available";
 
               return (
-                <TouchableOpacity
-                  key={apartment.id}
-                  activeOpacity={0.9}
-                  style={[
-                    styles.card,
-                    isWeb && styles.webCard,
-                  ]}
-                  onPress={() =>
-                    navigation.navigate(
-                      "ApartmentDetails",
-                      { apartment }
-                    )
-                  }
-                >
+              <View
+                key={apartment.id}
+                style={[styles.card, isWeb && styles.webCard]}
+              >
                   <View style={styles.imageContainer}>
                     <Image
-                      source={{
-                        uri: apartment.image_url,
-                      }}
+                      source={{ uri: apartment.image_url }}
                       style={styles.image}
                       resizeMode="cover"
                     />
@@ -175,9 +158,7 @@ export default function HomeScreen({ navigation }) {
                       />
 
                       <Text style={styles.statusBadgeText}>
-                        {isAvailable
-                          ? "Available"
-                          : "Unavailable"}
+                        {isAvailable ? "Available" : "Unavailable"}
                       </Text>
                     </View>
                   </View>
@@ -207,21 +188,10 @@ export default function HomeScreen({ navigation }) {
 
                     <View style={styles.features}>
                       {[
-                        [
-                          "bed",
-                          apartment.bedrooms,
-                          "Bedroom",
-                        ],
-                        [
-                          "shower",
-                          apartment.bathrooms,
-                          "Bathroom",
-                        ],
+                        ["bed", apartment.bedrooms, "Bedroom"],
+                        ["shower", apartment.bathrooms, "Bathroom"],
                       ].map(([icon, value, label]) => (
-                        <View
-                          style={styles.feature}
-                          key={label}
-                        >
+                        <View style={styles.feature} key={label}>
                           <MaterialCommunityIcons
                             name={icon}
                             size={15}
@@ -237,52 +207,45 @@ export default function HomeScreen({ navigation }) {
 
                     <View style={styles.divider} />
 
-                    <Text style={styles.rateTitle}>
-                      Rental Rates
-                    </Text>
+                    <Text style={styles.rateTitle}>Rental Rates</Text>
 
                     <View style={styles.rates}>
                       <View>
-                        <Text style={styles.rateLabel}>
-                          Daily
-                        </Text>
+                        <Text style={styles.rateLabel}>Daily</Text>
 
                         <Text style={styles.rate}>
                           ₱
                           {Number(
                             apartment.daily_rate || 0
                           ).toLocaleString()}
-                          <Text style={styles.rateUnit}>
-                            {" "}
-                            /day
-                          </Text>
+                          <Text style={styles.rateUnit}> /day</Text>
                         </Text>
                       </View>
 
                       <View style={styles.rateRight}>
-                        <Text style={styles.rateLabel}>
-                          Monthly
-                        </Text>
+                        <Text style={styles.rateLabel}>Monthly</Text>
 
                         <Text style={styles.rate}>
                           ₱
                           {Number(
                             apartment.price || 0
                           ).toLocaleString()}
-                          <Text style={styles.rateUnit}>
-                            {" "}
-                            /month
-                          </Text>
+                          <Text style={styles.rateUnit}> /month</Text>
                         </Text>
                       </View>
                     </View>
 
-                    <View
+                    <TouchableOpacity
                       style={[
                         styles.viewButton,
-                        !isAvailable &&
-                          styles.viewUnavailableButton,
+                        !isAvailable && styles.viewUnavailableButton,
                       ]}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        navigation.navigate("ApartmentDetails", {
+                          apartment,
+                        })
+                      }
                     >
                       <Text style={styles.viewButtonText}>
                         View Apartment
@@ -293,9 +256,9 @@ export default function HomeScreen({ navigation }) {
                         size={15}
                         color="#FFFFFF"
                       />
-                    </View>
+                    </TouchableOpacity>
                   </View>
-                </TouchableOpacity>
+                </View>
               );
             })}
           </View>

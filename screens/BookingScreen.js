@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+
 import {
   View,
   Text,
@@ -6,9 +7,13 @@ import {
   TouchableOpacity,
   ScrollView,
   useWindowDimensions,
+  Platform,
 } from "react-native";
+
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
 
+// Manages rental dates, duration, pricing, and navigation to payment.
 export default function BookingScreen({ route, navigation }) {
   const { apartment } = route.params;
   const { width } = useWindowDimensions();
@@ -17,11 +22,13 @@ export default function BookingScreen({ route, navigation }) {
   const [rentalType, setRentalType] = useState("Monthly");
   const [duration, setDuration] = useState(1);
   const [startDate, setStartDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const dailyRate = Number(apartment.daily_rate || 0);
   const monthlyRate = Number(apartment.price || dailyRate * 30);
   const plans = [1, 3, 6, 12];
 
+  // Calculates the end date based on the selected rental duration.
   const endDate = useMemo(() => {
     const date = new Date(startDate);
 
@@ -34,11 +41,13 @@ export default function BookingScreen({ route, navigation }) {
     return date;
   }, [startDate, duration, rentalType]);
 
+  // Calculates the total rent for the selected rental plan.
   const totalAmount =
     rentalType === "Daily"
       ? dailyRate * duration
       : monthlyRate * duration;
 
+  // Formats dates for display.
   const formatDate = (date) =>
     date.toLocaleDateString("en-US", {
       month: "short",
@@ -46,19 +55,38 @@ export default function BookingScreen({ route, navigation }) {
       year: "numeric",
     });
 
+  // Formats dates for the date picker's minimum date.
   const formatInputDate = (date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
       date.getDate()
     ).padStart(2, "0")}`;
 
-  const handleDateChange = (event) => {
-    const value = event.target.value;
-    if (!value) return;
+  // Updates the selected start date on web, Android, and iOS.
+  const handleDateChange = (event, selectedDate) => {
+    if (Platform.OS === "web") {
+      const value = event.target.value;
 
-    const [year, month, day] = value.split("-").map(Number);
-    setStartDate(new Date(year, month - 1, day));
+      if (!value) return;
+
+      const [year, month, day] = value.split("-").map(Number);
+
+      setStartDate(new Date(year, month - 1, day));
+      return;
+    }
+
+    setShowDatePicker(Platform.OS === "ios");
+
+    if (selectedDate) {
+      setStartDate(selectedDate);
+    }
   };
 
+  // Opens the date picker.
+  const handleSelectDate = () => {
+    setShowDatePicker(true);
+  };
+
+  // Passes the booking details to the Payment screen.
   const handleContinue = () =>
     navigation.navigate("Payment", {
       apartment,
@@ -69,15 +97,19 @@ export default function BookingScreen({ route, navigation }) {
       totalAmount,
     });
 
-  const durationText = rentalType === "Daily"
-    ? `${duration} ${duration === 1 ? "Day" : "Days"}`
-    : `${duration} ${duration === 1 ? "Month" : "Months"}`;
+  const durationText =
+    rentalType === "Daily"
+      ? `${duration} ${duration === 1 ? "Day" : "Days"}`
+      : `${duration} ${duration === 1 ? "Month" : "Months"}`;
 
   return (
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, isDesktop && styles.desktopContent]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isDesktop && styles.desktopContent,
+        ]}
       >
         <View style={styles.header}>
           <TouchableOpacity
@@ -86,11 +118,18 @@ export default function BookingScreen({ route, navigation }) {
           >
             <Feather name="arrow-left" size={22} color="#172033" />
           </TouchableOpacity>
+
           <Text style={styles.headerTitle}>Book Your Stay</Text>
+
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={[styles.content, isDesktop && styles.desktopLayout]}>
+        <View
+          style={[
+            styles.content,
+            isDesktop && styles.desktopLayout,
+          ]}
+        >
           <View style={styles.mainColumn}>
             <Text style={styles.sectionTitle}>Rental Type</Text>
 
@@ -124,18 +163,27 @@ export default function BookingScreen({ route, navigation }) {
             {rentalType === "Daily" ? (
               <View style={styles.durationCard}>
                 <View>
-                  <Text style={styles.durationLabel}>NUMBER OF DAYS</Text>
-                  <Text style={styles.durationValue}>{durationText}</Text>
+                  <Text style={styles.durationLabel}>
+                    NUMBER OF DAYS
+                  </Text>
+
+                  <Text style={styles.durationValue}>
+                    {durationText}
+                  </Text>
                 </View>
 
                 <View style={styles.stepper}>
                   <TouchableOpacity
                     style={styles.stepButton}
-                    onPress={() => setDuration(Math.max(1, duration - 1))}
+                    onPress={() =>
+                      setDuration(Math.max(1, duration - 1))
+                    }
                   >
                     <Text style={styles.stepText}>−</Text>
                   </TouchableOpacity>
+
                   <Text style={styles.stepValue}>{duration}</Text>
+
                   <TouchableOpacity
                     style={styles.stepButton}
                     onPress={() => setDuration(duration + 1)}
@@ -163,6 +211,7 @@ export default function BookingScreen({ route, navigation }) {
                     >
                       {plan}
                     </Text>
+
                     <Text
                       style={[
                         styles.planText,
@@ -179,35 +228,109 @@ export default function BookingScreen({ route, navigation }) {
             <Text style={styles.sectionTitle}>Rental Dates</Text>
 
             <View style={styles.dateCard}>
-              <View style={styles.webDateRow}>
-                <View style={styles.dateIcon}>
-                  <Feather name="calendar" size={19} color="#2563EB" />
-                </View>
+              {Platform.OS === "web" ? (
+                <View style={styles.webDateRow}>
+                  <View style={styles.dateIcon}>
+                    <Feather
+                      name="calendar"
+                      size={19}
+                      color="#2563EB"
+                    />
+                  </View>
 
-                <View style={styles.dateInfo}>
-                  <Text style={styles.dateLabel}>MOVE-IN / START DATE</Text>
-                  <Text style={styles.dateValue}>{formatDate(startDate)}</Text>
-                </View>
+                  <View style={styles.dateInfo}>
+                    <Text style={styles.dateLabel}>
+                      MOVE-IN / START DATE
+                    </Text>
 
-                <input
-                  type="date"
-                  value={formatInputDate(startDate)}
-                  min={formatInputDate(new Date())}
-                  onChange={handleDateChange}
-                  style={styles.hiddenDateInput}
-                />
-              </View>
+                    <Text style={styles.dateValue}>
+                      {formatDate(startDate)}
+                    </Text>
+                  </View>
+
+                  <Feather
+                    name="chevron-down"
+                    size={20}
+                    color="#2563EB"
+                  />
+
+                  {/* Opens the browser's date picker. */}
+                  <input
+                    type="date"
+                    aria-label="Select move-in date"
+                    value={formatInputDate(startDate)}
+                    min={formatInputDate(new Date())}
+                    onChange={handleDateChange}
+                    style={styles.hiddenDateInput}
+                  />
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.webDateRow}
+                    onPress={handleSelectDate}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.dateIcon}>
+                      <Feather
+                        name="calendar"
+                        size={19}
+                        color="#2563EB"
+                      />
+                    </View>
+
+                    <View style={styles.dateInfo}>
+                      <Text style={styles.dateLabel}>
+                        MOVE-IN / START DATE
+                      </Text>
+
+                      <Text style={styles.dateValue}>
+                        {formatDate(startDate)}
+                      </Text>
+
+                      <Text style={styles.selectDateText}>
+                        Select Date
+                      </Text>
+                    </View>
+
+                    <Feather
+                      name="chevron-down"
+                      size={20}
+                      color="#2563EB"
+                    />
+                  </TouchableOpacity>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={startDate}
+                      mode="date"
+                      display={
+                        Platform.OS === "ios" ? "spinner" : "default"
+                      }
+                      minimumDate={new Date()}
+                      onChange={handleDateChange}
+                    />
+                  )}
+                </>
+              )}
 
               <View style={styles.dateDivider} />
 
               <View style={styles.dateRow}>
                 <View style={styles.dateIconEnd}>
-                  <Feather name="flag" size={18} color="#2563EB" />
+                  <Feather
+                    name="flag"
+                    size={18}
+                    color="#2563EB"
+                  />
                 </View>
 
                 <View style={styles.dateInfo}>
                   <Text style={styles.dateLabel}>END DATE</Text>
-                  <Text style={styles.dateValue}>{formatDate(endDate)}</Text>
+
+                  <Text style={styles.dateValue}>
+                    {formatDate(endDate)}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -216,20 +339,33 @@ export default function BookingScreen({ route, navigation }) {
           <View style={styles.summaryColumn}>
             <View style={styles.selectedApartment}>
               <View style={styles.selectedImageWrapper}>
-                <img
-                  src={apartment.image_url}
-                  alt={apartment.title}
-                  style={styles.selectedImage}
-                />
+                {Platform.OS === "web" ? (
+                  <img
+                    src={apartment.image_url}
+                    alt={apartment.title}
+                    style={styles.selectedImage}
+                  />
+                ) : (
+                  <Text>🏠</Text>
+                )}
               </View>
 
               <View style={styles.selectedInfo}>
                 <Text style={styles.selectedLabel}>
                   SELECTED APARTMENT
                 </Text>
-                <Text style={styles.selectedTitle}>{apartment.title}</Text>
+
+                <Text style={styles.selectedTitle}>
+                  {apartment.title}
+                </Text>
+
                 <View style={styles.selectedLocation}>
-                  <Feather name="map-pin" size={13} color="#6B7280" />
+                  <Feather
+                    name="map-pin"
+                    size={13}
+                    color="#6B7280"
+                  />
+
                   <Text style={styles.selectedLocationText}>
                     {apartment.location}
                   </Text>
@@ -238,7 +374,9 @@ export default function BookingScreen({ route, navigation }) {
             </View>
 
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>Booking Summary</Text>
+              <Text style={styles.summaryTitle}>
+                Booking Summary
+              </Text>
 
               {[
                 ["Rental Type", rentalType],
@@ -253,7 +391,9 @@ export default function BookingScreen({ route, navigation }) {
               ))}
 
               <View style={styles.summaryDivider} />
+
               <Text style={styles.totalLabel}>TOTAL RENT</Text>
+
               <Text style={styles.totalAmount}>
                 ₱{totalAmount.toLocaleString()}
               </Text>
@@ -265,7 +405,12 @@ export default function BookingScreen({ route, navigation }) {
                 <Text style={styles.paymentButtonText}>
                   Continue to Payment
                 </Text>
-                <Feather name="arrow-right" size={18} color="#fff" />
+
+                <Feather
+                  name="arrow-right"
+                  size={18}
+                  color="#fff"
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -280,14 +425,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F5F7FB",
   },
+
   scrollContent: {
     paddingBottom: 40,
   },
+
   desktopContent: {
     maxWidth: 1250,
     width: "100%",
     alignSelf: "center",
   },
+
   header: {
     height: 78,
     flexDirection: "row",
@@ -295,6 +443,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 22,
   },
+
   backButton: {
     width: 44,
     height: 44,
@@ -305,25 +454,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   headerTitle: {
     color: "#172033",
     fontSize: 20,
     fontWeight: "900",
   },
+
   headerSpacer: {
     width: 42,
   },
+
   content: {
     padding: 20,
   },
+
   desktopLayout: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 24,
   },
+
   mainColumn: {
     flex: 1,
   },
+
   sectionTitle: {
     color: "#172033",
     fontSize: 16,
@@ -331,6 +486,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 4,
   },
+
   typeContainer: {
     flexDirection: "row",
     backgroundColor: "#EAF1FF",
@@ -338,23 +494,28 @@ const styles = StyleSheet.create({
     padding: 4,
     marginBottom: 24,
   },
+
   typeButton: {
     flex: 1,
     paddingVertical: 12,
     alignItems: "center",
     borderRadius: 11,
   },
+
   activeType: {
     backgroundColor: "#2563EB",
   },
+
   typeText: {
     color: "#526075",
     fontSize: 14,
     fontWeight: "800",
   },
+
   activeTypeText: {
     color: "#fff",
   },
+
   durationCard: {
     backgroundColor: "#fff",
     borderRadius: 18,
@@ -366,22 +527,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
   },
+
   durationLabel: {
     color: "#8A92A3",
     fontSize: 9,
     fontWeight: "900",
   },
+
   durationValue: {
     color: "#172033",
     fontSize: 17,
     fontWeight: "900",
     marginTop: 5,
   },
+
   stepper: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
+
   stepButton: {
     width: 38,
     height: 38,
@@ -390,21 +555,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   stepText: {
     color: "#2563EB",
     fontSize: 22,
     fontWeight: "700",
   },
+
   stepValue: {
     color: "#172033",
     fontSize: 16,
     fontWeight: "900",
   },
+
   planGrid: {
     flexDirection: "row",
     gap: 10,
     marginBottom: 24,
   },
+
   planCard: {
     flex: 1,
     minHeight: 78,
@@ -415,24 +584,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   activePlan: {
     backgroundColor: "#2563EB",
     borderColor: "#2563EB",
   },
+
   planNumber: {
     color: "#172033",
     fontSize: 19,
     fontWeight: "900",
   },
+
   planText: {
     color: "#7B8495",
     fontSize: 11,
     fontWeight: "700",
     marginTop: 3,
   },
+
   activePlanText: {
     color: "#fff",
   },
+
   dateCard: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -441,16 +615,20 @@ const styles = StyleSheet.create({
     borderColor: "#E3E8F0",
     marginBottom: 24,
   },
+
   dateRow: {
     flexDirection: "row",
     alignItems: "center",
   },
+
   webDateRow: {
     flexDirection: "row",
     alignItems: "center",
     position: "relative",
     cursor: "pointer",
+    minHeight: 55,
   },
+
   hiddenDateInput: {
     position: "absolute",
     left: 0,
@@ -461,6 +639,7 @@ const styles = StyleSheet.create({
     cursor: "pointer",
     zIndex: 10,
   },
+
   dateIcon: {
     width: 45,
     height: 45,
@@ -470,6 +649,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
+
   dateIconEnd: {
     width: 45,
     height: 45,
@@ -479,30 +659,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
+
   dateInfo: {
     flex: 1,
   },
+
   dateLabel: {
     color: "#8A92A3",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 0.5,
   },
+
   dateValue: {
     color: "#172033",
     fontSize: 15,
     fontWeight: "900",
     marginTop: 4,
   },
+
   dateDivider: {
     height: 1,
     backgroundColor: "#E9EDF3",
     marginVertical: 16,
   },
+
   summaryColumn: {
     width: "100%",
     maxWidth: 370,
   },
+
   selectedApartment: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -513,43 +699,53 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 14,
   },
+
   selectedImageWrapper: {
     width: 72,
     height: 68,
     borderRadius: 13,
     overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   selectedImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
   },
+
   selectedInfo: {
     flex: 1,
     paddingLeft: 12,
   },
+
   selectedLabel: {
     color: "#8A92A3",
     fontSize: 8,
     fontWeight: "900",
     letterSpacing: 0.5,
   },
+
   selectedTitle: {
     color: "#172033",
     fontSize: 16,
     fontWeight: "900",
     marginTop: 3,
   },
+
   selectedLocation: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 4,
   },
+
   selectedLocationText: {
     color: "#6B7280",
     fontSize: 11,
     marginLeft: 4,
   },
+
   summaryCard: {
     width: "100%",
     backgroundColor: "#fff",
@@ -558,34 +754,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E3E8F0",
   },
+
   summaryTitle: {
     color: "#172033",
     fontSize: 18,
     fontWeight: "900",
     marginBottom: 20,
   },
+
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 15,
   },
+
   summaryLabel: {
     color: "#7A8495",
     fontSize: 13,
     fontWeight: "600",
   },
+
   summaryValue: {
     color: "#172033",
     fontSize: 13,
     fontWeight: "900",
     textAlign: "right",
   },
+
   summaryDivider: {
     height: 1,
     backgroundColor: "#E9EDF3",
     marginVertical: 7,
   },
+
   totalLabel: {
     color: "#8A92A3",
     fontSize: 9,
@@ -593,6 +795,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginTop: 12,
   },
+
   totalAmount: {
     color: "#2563EB",
     fontSize: 30,
@@ -600,6 +803,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 20,
   },
+
   paymentButton: {
     height: 52,
     backgroundColor: "#2563EB",
@@ -609,6 +813,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 9,
   },
+
   paymentButtonText: {
     color: "#fff",
     fontSize: 14,

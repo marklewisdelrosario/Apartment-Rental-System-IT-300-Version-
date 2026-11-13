@@ -21,6 +21,7 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const nameRegex = /^[A-Za-zÀ-ÿ\s'-]+$/;
 
+// Reusable password input with a visibility toggle.
 const PasswordInput = ({
   value,
   setValue,
@@ -65,25 +66,31 @@ export default function ProfileScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
 
+  // Stores the user's profile information and editable name and email values.
   const [profile, setProfile] = useState(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
 
+  // Stores the current, new, and confirmation passwords.
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Controls whether each password field displays or hides its text.
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Tracks the section being edited and whether an update is in progress.
   const [editingSection, setEditingSection] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  // Loads the user's profile when the screen first mounts.
   useEffect(() => {
     loadProfile();
   }, []);
 
+  // Loads the signed-in user's profile from Supabase.
   const loadProfile = async () => {
     try {
       const {
@@ -122,15 +129,18 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  // Clears password fields and resets their visibility settings.
   const resetPasswordFields = () => {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+
     setShowCurrentPassword(false);
     setShowNewPassword(false);
     setShowConfirmPassword(false);
   };
 
+  // Opens the selected section for editing and prepares its input values.
   const startEditing = (section) => {
     if (editingSection) return;
 
@@ -151,6 +161,7 @@ export default function ProfileScreen({ navigation }) {
     setEditingSection(section);
   };
 
+  // Cancels editing and restores the original profile values.
   const cancelEditing = () => {
     if (editingSection === "name") {
       setName(profile?.full_name || "");
@@ -168,6 +179,7 @@ export default function ProfileScreen({ navigation }) {
     setEditingSection(null);
   };
 
+  // Validates and saves the user's updated full name.
   const saveName = async () => {
     const cleanName = name.trim();
 
@@ -193,12 +205,11 @@ export default function ProfileScreen({ navigation }) {
         return;
       }
 
-      const { error: authError } =
-        await supabase.auth.updateUser({
-          data: {
-            full_name: cleanName,
-          },
-        });
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          full_name: cleanName,
+        },
+      });
 
       if (authError) {
         showAlert("Update Failed", authError.message);
@@ -241,16 +252,17 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  // Verifies the user's current password before sensitive account changes.
   const verifyPassword = async (user, password) => {
-    const { error } =
-      await supabase.auth.signInWithPassword({
-        email: user.email,
-        password,
-      });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password,
+    });
 
     return error;
   };
 
+  // Validates the current password and requests an email address change.
   const saveEmail = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -288,10 +300,7 @@ export default function ProfileScreen({ navigation }) {
       } = await supabase.auth.getUser();
 
       if (userError || !user?.email) {
-        showAlert(
-          "Error",
-          "User session not found."
-        );
+        showAlert("Error", "User session not found.");
         return;
       }
 
@@ -314,10 +323,7 @@ export default function ProfileScreen({ navigation }) {
       );
 
       if (authError) {
-        showAlert(
-          "Email Update Failed",
-          authError.message
-        );
+        showAlert("Email Update Failed", authError.message);
         return;
       }
 
@@ -339,6 +345,7 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  // Validates the current password and saves a new password to Supabase.
   const savePassword = async () => {
     if (!currentPassword) {
       showAlert(
@@ -413,16 +420,12 @@ export default function ProfileScreen({ navigation }) {
         return;
       }
 
-      const { error } =
-        await supabase.auth.updateUser({
-          password: newPassword,
-        });
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
 
       if (error) {
-        showAlert(
-          "Password Update Failed",
-          error.message
-        );
+        showAlert("Password Update Failed", error.message);
         return;
       }
 
@@ -443,15 +446,12 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  // Signs the user out and returns them to the Login screen.
   const signOut = async () => {
-    const { error } =
-      await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
 
     if (error) {
-      showAlert(
-        "Sign Out Failed",
-        error.message
-      );
+      showAlert("Sign Out Failed", error.message);
       return;
     }
 
@@ -468,6 +468,7 @@ export default function ProfileScreen({ navigation }) {
         .toUpperCase()
     : "U";
 
+  // Displays Edit when idle and Cancel/Save actions while editing.
   const EditActions = ({ section, save }) =>
     editingSection === section ? (
       <View style={styles.actionRow}>
@@ -476,9 +477,7 @@ export default function ProfileScreen({ navigation }) {
           onPress={cancelEditing}
           disabled={saving}
         >
-          <Text style={styles.cancelSmallText}>
-            Cancel
-          </Text>
+          <Text style={styles.cancelSmallText}>Cancel</Text>
         </Pressable>
 
         <Pressable
@@ -492,9 +491,7 @@ export default function ProfileScreen({ navigation }) {
               color="#FFFFFF"
             />
           ) : (
-            <Text style={styles.saveSmallText}>
-              Save
-            </Text>
+            <Text style={styles.saveSmallText}>Save</Text>
           )}
         </Pressable>
       </View>
@@ -510,9 +507,7 @@ export default function ProfileScreen({ navigation }) {
           color="#1769E0"
         />
 
-        <Text style={styles.editSmallText}>
-          Edit
-        </Text>
+        <Text style={styles.editSmallText}>Edit</Text>
       </Pressable>
     );
 
@@ -542,9 +537,7 @@ export default function ProfileScreen({ navigation }) {
             </Pressable>
 
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>
-                My Profile
-              </Text>
+              <Text style={styles.headerTitle}>My Profile</Text>
 
               <Text style={styles.headerSubtitle}>
                 Manage your account
@@ -556,9 +549,7 @@ export default function ProfileScreen({ navigation }) {
 
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {initials}
-              </Text>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
 
             <View style={styles.profileInfo}>
@@ -601,14 +592,11 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={styles.cardTitleArea}>
-                <Text style={styles.cardLabel}>
-                  FULL NAME
-                </Text>
+                <Text style={styles.cardLabel}>FULL NAME</Text>
 
                 {editingSection !== "name" && (
                   <Text style={styles.cardValue}>
-                    {profile?.full_name ||
-                      "Not provided"}
+                    {profile?.full_name || "Not provided"}
                   </Text>
                 )}
               </View>
@@ -646,17 +634,14 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={styles.cardTitleArea}>
-                <Text style={styles.cardLabel}>
-                  EMAIL ADDRESS
-                </Text>
+                <Text style={styles.cardLabel}>EMAIL ADDRESS</Text>
 
                 {editingSection !== "email" && (
                   <Text
                     style={styles.cardValue}
                     numberOfLines={1}
                   >
-                    {profile?.email ||
-                      "Not provided"}
+                    {profile?.email || "Not provided"}
                   </Text>
                 )}
               </View>
@@ -715,14 +700,10 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={styles.cardTitleArea}>
-                <Text style={styles.cardLabel}>
-                  PASSWORD
-                </Text>
+                <Text style={styles.cardLabel}>PASSWORD</Text>
 
                 {editingSection !== "password" && (
-                  <Text style={styles.cardValue}>
-                    ••••••••
-                  </Text>
+                  <Text style={styles.cardValue}>••••••••</Text>
                 )}
               </View>
 
@@ -753,6 +734,11 @@ export default function ProfileScreen({ navigation }) {
                   placeholder="New password"
                 />
 
+                <Text style={styles.passwordHint}>
+                  At least 6 characters, with a combination of uppercase,
+                  lowercase, and number.
+                </Text>
+
                 <PasswordInput
                   value={confirmPassword}
                   setValue={setConfirmPassword}
@@ -768,10 +754,7 @@ export default function ProfileScreen({ navigation }) {
           <Pressable
             style={styles.signOutButton}
             onPress={signOut}
-            disabled={
-              editingSection !== null ||
-              saving
-            }
+            disabled={editingSection !== null || saving}
           >
             <View style={styles.signOutLeft}>
               <View style={styles.signOutIcon}>
@@ -783,9 +766,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View>
-                <Text style={styles.signOutTitle}>
-                  Sign Out
-                </Text>
+                <Text style={styles.signOutTitle}>Sign Out</Text>
 
                 <Text style={styles.signOutSubtitle}>
                   Sign out of your account
@@ -1156,5 +1137,14 @@ const styles = StyleSheet.create({
     color: "#A1A8B3",
     fontSize: 10,
     marginTop: 2,
+  },
+
+  passwordHint: {
+    fontSize: 11,
+    color: "#8995A6",
+    marginTop: 0,
+    marginBottom: 4,
+    lineHeight: 16,
+    marginLeft: 3,
   },
 });

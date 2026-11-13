@@ -13,6 +13,7 @@ import ResetPasswordScreen from "./screens/ResetPasswordScreen";
 
 const Stack = createNativeStackNavigator();
 
+// Maps screen names to URL paths for deep linking.
 const linking = {
   config: {
     screens: {
@@ -28,18 +29,46 @@ const linking = {
   },
 };
 
+// Sets up the app navigation stack and deep-link routes.
 export default function App() {
   return (
     <NavigationContainer linking={linking}>
-      <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="ApartmentDetails" component={ApartmentDetailsScreen} />
-        <Stack.Screen name="Booking" component={BookingScreen} />
-        <Stack.Screen name="Payment" component={PaymentScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+      <Stack.Navigator
+        initialRouteName="Login"
+        screenOptions={{ headerShown: false }}
+      >
+        <Stack.Screen 
+          name="Login" 
+          component={LoginScreen} 
+        />
+        <Stack.Screen 
+          name="Register" 
+          component={RegisterScreen} 
+        />
+        <Stack.Screen 
+          name="Home"   
+          component={HomeScreen} 
+        />
+        <Stack.Screen
+          name="ApartmentDetails"
+          component={ApartmentDetailsScreen}
+        />
+        <Stack.Screen 
+          name="Booking" 
+          component={BookingScreen} 
+        />
+        <Stack.Screen 
+          name="Payment" 
+          component={PaymentScreen} 
+          />
+        <Stack.Screen 
+          name="Profile" 
+          component={ProfileScreen} 
+          />
+        <Stack.Screen
+          name="ResetPassword"
+          component={ResetPasswordScreen}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

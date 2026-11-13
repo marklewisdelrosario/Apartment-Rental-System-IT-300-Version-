@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+
 import {
   View,
   Text,
@@ -8,10 +9,14 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from "react-native";
+
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+
 import { supabase } from "../services/supabase";
 
+// Displays apartment details and loads the apartment information and images.
 export default function ApartmentDetailsScreen({ route, navigation }) {
+  // Gets the selected apartment passed from the previous screen.
   const { apartment: routeApartment } = route.params;
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
@@ -29,6 +34,7 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
     loadImages();
   }, []);
 
+  // Fetches the latest details for the selected apartment.
   const loadApartment = async () => {
     const { data, error } = await supabase
       .from("apartments")
@@ -45,6 +51,7 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
     }
   };
 
+  // Loads the apartment gallery, falling back to its main image when needed.
   const loadImages = async () => {
     const { data, error } = await supabase
       .from("apartment_images")
@@ -93,9 +100,7 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
               />
             </TouchableOpacity>
 
-            <Text style={styles.pageTitle}>
-              Apartment Details
-            </Text>
+            <Text style={styles.pageTitle}>Apartment Details</Text>
 
             <View style={styles.headerSpacer} />
           </View>
@@ -150,9 +155,7 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
                 {images.map((item, index) => (
                   <TouchableOpacity
                     key={item.id || index}
-                    onPress={() =>
-                      setSelectedImage(item.image_url)
-                    }
+                    onPress={() => setSelectedImage(item.image_url)}
                     style={[
                       styles.thumbnailWrapper,
                       selectedImage === item.image_url &&
@@ -193,16 +196,8 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
 
               <View style={styles.featuresCard}>
                 {[
-                  [
-                    "bed",
-                    apartment.bedrooms || 1,
-                    "Bedroom",
-                  ],
-                  [
-                    "shower",
-                    apartment.bathrooms || 1,
-                    "Bathroom",
-                  ],
+                  ["bed", apartment.bedrooms || 1, "Bedroom"],
+                  ["shower", apartment.bathrooms || 1, "Bathroom"],
                 ].map(([icon, value, label], index) => (
                   <React.Fragment key={label}>
                     {index > 0 && (
@@ -240,28 +235,17 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
                     />
                   </View>
 
-                  <Text style={styles.featureNumber}>
-                    24/7
-                  </Text>
-
-                  <Text style={styles.featureLabel}>
-                    Access
-                  </Text>
+                  <Text style={styles.featureNumber}>24/7</Text>
+                  <Text style={styles.featureLabel}>Access</Text>
                 </View>
               </View>
 
-              <Text style={styles.sectionTitle}>
-                Rental Rates
-              </Text>
+              <Text style={styles.sectionTitle}>Rental Rates</Text>
 
               <View style={styles.ratesRow}>
                 {[
                   ["Daily Rental", dailyRate, "/day"],
-                  [
-                    "Monthly Rental",
-                    monthlyRate,
-                    "/month",
-                  ],
+                  ["Monthly Rental", monthlyRate, "/month"],
                 ].map(([label, price, period]) => (
                   <View style={styles.rateCard} key={label}>
                     <View style={styles.rateIcon}>
@@ -272,18 +256,14 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
                       />
                     </View>
 
-                    <Text style={styles.rateLabel}>
-                      {label}
-                    </Text>
+                    <Text style={styles.rateLabel}>{label}</Text>
 
                     <View style={styles.priceRow}>
                       <Text style={styles.price}>
                         {formatPrice(price)}
                       </Text>
 
-                      <Text style={styles.period}>
-                        {period}
-                      </Text>
+                      <Text style={styles.period}>{period}</Text>
                     </View>
                   </View>
                 ))}
@@ -304,18 +284,14 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
 
       <View style={styles.bottomBar}>
         <View>
-          <Text style={styles.startingText}>
-            Starting from
-          </Text>
+          <Text style={styles.startingText}>Starting from</Text>
 
           <View style={styles.bottomPriceRow}>
             <Text style={styles.bottomPrice}>
               {formatPrice(dailyRate)}
             </Text>
 
-            <Text style={styles.bottomPeriod}>
-              /day
-            </Text>
+            <Text style={styles.bottomPeriod}>/day</Text>
           </View>
         </View>
 
@@ -326,9 +302,7 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
           ]}
           onPress={() => {
             if (isAvailable) {
-              navigation.navigate("Booking", {
-                apartment,
-              });
+              navigation.navigate("Booking", { apartment });
             }
           }}
           disabled={!isAvailable}
@@ -337,13 +311,10 @@ export default function ApartmentDetailsScreen({ route, navigation }) {
           <Text
             style={[
               styles.bookButtonText,
-              !isAvailable &&
-                styles.disabledBookButtonText,
+              !isAvailable && styles.disabledBookButtonText,
             ]}
           >
-            {isAvailable
-              ? "Book Apartment"
-              : "Apartment Unavailable"}
+            {isAvailable ? "Book Apartment" : "Apartment Unavailable"}
           </Text>
 
           {isAvailable && (

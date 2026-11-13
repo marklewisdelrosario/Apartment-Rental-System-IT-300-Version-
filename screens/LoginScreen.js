@@ -16,8 +16,10 @@ import { Feather } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { showAlert } from "../services/alert";
 
+// Validates the email address format.
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Handles sign-in and navigation to the home screen after successful authentication.
 export default function LoginScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
@@ -28,6 +30,7 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
 
+  // Validates the login fields and signs the user in through Supabase.
   const login = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -66,8 +69,10 @@ export default function LoginScreen({ navigation }) {
 
       const user = data?.user;
 
+      // Prevents users with unverified email addresses from accessing the home screen.
       if (!user?.email_confirmed_at) {
         await supabase.auth.signOut();
+
         showAlert(
           "Email Not Verified",
           "Please verify your email address before signing in."
@@ -86,7 +91,7 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  
+  // Sends a password recovery email with a redirect to the reset screen.
   const forgotPassword = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -147,14 +152,17 @@ export default function LoginScreen({ navigation }) {
           </View>
 
           <Text style={styles.title}>Welcome Back</Text>
+
           <Text style={styles.subtitle}>
             Sign in to continue to your apartment rental account.
           </Text>
 
           <View style={styles.field}>
             <Text style={styles.label}>Email Address</Text>
+
             <View style={styles.inputContainer}>
               <Feather name="mail" size={18} color="#8995A6" />
+
               <TextInput
                 style={styles.input}
                 value={email}
@@ -174,6 +182,7 @@ export default function LoginScreen({ navigation }) {
           <View style={styles.field}>
             <View style={styles.labelRow}>
               <Text style={styles.label}>Password</Text>
+
               <TouchableOpacity
                 onPress={forgotPassword}
                 disabled={forgotLoading}
@@ -187,6 +196,7 @@ export default function LoginScreen({ navigation }) {
 
             <View style={styles.inputContainer}>
               <Feather name="lock" size={18} color="#8995A6" />
+
               <TextInput
                 style={styles.input}
                 value={password}
@@ -202,6 +212,7 @@ export default function LoginScreen({ navigation }) {
                 returnKeyType="done"
                 onSubmitEditing={login}
               />
+
               <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 activeOpacity={0.7}
@@ -242,6 +253,7 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.registerText}>
               Don't have an account?
             </Text>
+
             <TouchableOpacity
               onPress={() => navigation.navigate("Register")}
               activeOpacity={0.7}
@@ -260,16 +272,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F5F8FC",
   },
+
   scroll: {
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingVertical: 25,
     justifyContent: "center",
   },
+
   webScroll: {
     alignItems: "center",
     paddingVertical: 35,
   },
+
   card: {
     width: "100%",
     backgroundColor: "#FFFFFF",
@@ -278,11 +293,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E6EBF2",
   },
+
   webCard: {
     maxWidth: 460,
     padding: 38,
     boxShadow: "0px 8px 20px rgba(21, 34, 56, 0.06)",
   },
+
   logo: {
     width: 62,
     height: 62,
@@ -293,12 +310,14 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 18,
   },
+
   title: {
     fontSize: 29,
     fontWeight: "800",
     color: "#152238",
     textAlign: "center",
   },
+
   subtitle: {
     fontSize: 13,
     lineHeight: 20,
@@ -307,25 +326,30 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 27,
   },
+
   field: {
     marginBottom: 17,
   },
+
   labelRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 7,
   },
+
   label: {
     fontSize: 12,
     fontWeight: "700",
     color: "#344054",
   },
+
   forgotText: {
     fontSize: 11,
     fontWeight: "700",
     color: "#1769E0",
   },
+
   inputContainer: {
     height: 53,
     borderWidth: 1,
@@ -336,6 +360,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+
   input: {
     flex: 1,
     height: "100%",
@@ -346,12 +371,14 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     backgroundColor: "transparent",
   },
+
   eyeButton: {
     width: 28,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
+
   loginButton: {
     height: 54,
     borderRadius: 15,
@@ -362,39 +389,47 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 9,
   },
+
   disabledButton: {
     opacity: 0.6,
   },
+
   loginButtonText: {
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
   },
+
   divider: {
     flexDirection: "row",
     alignItems: "center",
     marginVertical: 23,
   },
+
   line: {
     flex: 1,
     height: 1,
     backgroundColor: "#E8EDF4",
   },
+
   orText: {
     fontSize: 10,
     fontWeight: "700",
     color: "#A0A9B5",
     marginHorizontal: 12,
   },
+
   registerRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
   },
+
   registerText: {
     fontSize: 13,
     color: "#7A8798",
   },
+
   registerLink: {
     fontSize: 13,
     fontWeight: "800",

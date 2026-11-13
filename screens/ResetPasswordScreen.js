@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+
 import {
   View,
   Text,
@@ -7,15 +8,56 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
+
 import { Feather } from "@expo/vector-icons";
 
 import { supabase } from "../services/supabase";
 import { showAlert } from "../services/alert";
 
+// Reusable password input with a show/hide button.
+function PasswordInput({
+  value,
+  onChangeText,
+  placeholder,
+  showPassword,
+  onTogglePassword,
+  editable,
+}) {
+  return (
+    <View style={styles.inputContainer}>
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#A0A9B5"
+        secureTextEntry={!showPassword}
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={editable}
+      />
+
+      <TouchableOpacity
+        onPress={onTogglePassword}
+        style={styles.eyeButton}
+        activeOpacity={0.7}
+      >
+        <Feather
+          name={showPassword ? "eye-off" : "eye"}
+          size={19}
+          color="#777777"
+        />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// Verifies the recovery link and lets the user set a new password.
 export default function ResetPasswordScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [recoveryReady, setRecoveryReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -33,6 +75,7 @@ export default function ResetPasswordScreen({ navigation }) {
       }
     });
 
+    // Processes the recovery URL and establishes a valid Supabase session.
     const processRecoveryLink = async () => {
       try {
         // This screen is designed for your Expo web app.
@@ -80,8 +123,7 @@ export default function ResetPasswordScreen({ navigation }) {
             return;
           }
 
-          // Supabase may already have processed the code
-          // automatically when initializing the browser client.
+          // Supabase may already have processed the code automatically.
           const { data } = await supabase.auth.getSession();
 
           if (active && data.session) {
@@ -96,8 +138,7 @@ export default function ResetPasswordScreen({ navigation }) {
           return;
         }
 
-        // Handle an implicit-flow recovery link whose session
-        // has already been processed by the Supabase client.
+        // Handle a recovery link whose session was already processed.
         if (recoveryType === "recovery") {
           const { data, error } = await supabase.auth.getSession();
 
@@ -125,6 +166,7 @@ export default function ResetPasswordScreen({ navigation }) {
     };
   }, []);
 
+  // Validates and saves the new password, then returns the user to Login.
   const handleUpdatePassword = async () => {
     if (!password || !confirmPassword) {
       showAlert(
@@ -204,53 +246,34 @@ export default function ResetPasswordScreen({ navigation }) {
           Create a new password for your apartment rental account.
         </Text>
 
-       
         <Text style={styles.label}>New Password</Text>
 
-        <View>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter new password"
-              placeholderTextColor="#A0A9B5"
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!loading}
-            />
+        <PasswordInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Enter new password"
+          showPassword={showPassword}
+          onTogglePassword={() =>
+            setShowPassword((value) => !value)
+          }
+          editable={!loading}
+        />
 
-            <TouchableOpacity
-              onPress={() => setShowPassword((value) => !value)}
-              style={styles.eyeButton}
-              activeOpacity={0.7}
-            >
-              <Feather
-                name={showPassword ? "eye-off" : "eye"}
-                size={19}
-                color="#777777"
-              />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.passwordHint}>
-            At least 6 characters, with a combination of uppercase, lowercase, and number.
-          </Text>
-        </View>
-
+        <Text style={styles.passwordHint}>
+          At least 6 characters, with a combination of uppercase,
+          lowercase, and number.
+        </Text>
 
         <Text style={styles.label}>Confirm New Password</Text>
 
-        <TextInput
-          style={styles.confirmInput}
+        <PasswordInput
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           placeholder="Re-enter new password"
-          placeholderTextColor="#A0A9B5"
-          secureTextEntry={!showPassword}
-          autoCapitalize="none"
-          autoCorrect={false}
+          showPassword={showConfirmPassword}
+          onTogglePassword={() =>
+            setShowConfirmPassword((value) => !value)
+          }
           editable={!loading}
         />
 
@@ -266,9 +289,7 @@ export default function ResetPasswordScreen({ navigation }) {
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>
-              Update Password
-            </Text>
+            <Text style={styles.buttonText}>Update Password</Text>
           )}
         </TouchableOpacity>
 
@@ -291,6 +312,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 20,
   },
+
   card: {
     width: "100%",
     maxWidth: 460,
@@ -301,6 +323,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E6EBF2",
   },
+
   logo: {
     width: 62,
     height: 62,
@@ -311,12 +334,14 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 18,
   },
+
   title: {
     fontSize: 27,
     fontWeight: "800",
     color: "#152238",
     textAlign: "center",
   },
+
   subtitle: {
     fontSize: 14,
     lineHeight: 21,
@@ -325,6 +350,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 27,
   },
+
   label: {
     fontSize: 13,
     fontWeight: "700",
@@ -332,6 +358,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 14,
   },
+
   inputContainer: {
     height: 52,
     flexDirection: "row",
@@ -341,27 +368,21 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     paddingHorizontal: 12,
   },
+
   input: {
     flex: 1,
     height: "100%",
     color: "#152238",
     outlineStyle: "none",
   },
+
   eyeButton: {
     width: 35,
     height: 42,
     alignItems: "center",
     justifyContent: "center",
   },
-  confirmInput: {
-    height: 52,
-    borderWidth: 1,
-    borderColor: "#DCE3EC",
-    borderRadius: 13,
-    paddingHorizontal: 13,
-    color: "#152238",
-    outlineStyle: "none",
-  },
+
   button: {
     height: 53,
     borderRadius: 14,
@@ -370,18 +391,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 24,
   },
+
   disabledButton: {
     opacity: 0.6,
   },
+
   buttonText: {
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "800",
   },
+
   backButton: {
     alignItems: "center",
     marginTop: 22,
   },
+
   backText: {
     color: "#1769E0",
     fontSize: 14,
