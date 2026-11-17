@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 
 import {
@@ -18,10 +19,9 @@ import { supabase } from "../services/supabase";
 import { showAlert } from "../services/alert";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const nameRegex = /^[A-Za-zÀ-ÿ\s'-]+$/;
 
-// Reusable password input with a visibility toggle.
+// Reusable password input with visibility toggle.
 const PasswordInput = ({
   value,
   setValue,
@@ -66,31 +66,26 @@ export default function ProfileScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
 
-  // Stores the user's profile information and editable name and email values.
   const [profile, setProfile] = useState(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
 
-  // Stores the current, new, and confirmation passwords.
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Controls whether each password field displays or hides its text.
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Tracks the section being edited and whether an update is in progress.
   const [editingSection, setEditingSection] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Loads the user's profile when the screen first mounts.
   useEffect(() => {
     loadProfile();
   }, []);
 
-  // Loads the signed-in user's profile from Supabase.
+  // Load the signed-in user's profile.
   const loadProfile = async () => {
     try {
       const {
@@ -129,7 +124,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Clears password fields and resets their visibility settings.
   const resetPasswordFields = () => {
     setCurrentPassword("");
     setNewPassword("");
@@ -140,7 +134,6 @@ export default function ProfileScreen({ navigation }) {
     setShowConfirmPassword(false);
   };
 
-  // Opens the selected section for editing and prepares its input values.
   const startEditing = (section) => {
     if (editingSection) return;
 
@@ -161,7 +154,6 @@ export default function ProfileScreen({ navigation }) {
     setEditingSection(section);
   };
 
-  // Cancels editing and restores the original profile values.
   const cancelEditing = () => {
     if (editingSection === "name") {
       setName(profile?.full_name || "");
@@ -179,7 +171,7 @@ export default function ProfileScreen({ navigation }) {
     setEditingSection(null);
   };
 
-  // Validates and saves the user's updated full name.
+  // Save full name.
   const saveName = async () => {
     const cleanName = name.trim();
 
@@ -252,7 +244,7 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Verifies the user's current password before sensitive account changes.
+  // Verify the current password before sensitive changes.
   const verifyPassword = async (user, password) => {
     const { error } = await supabase.auth.signInWithPassword({
       email: user.email,
@@ -262,7 +254,7 @@ export default function ProfileScreen({ navigation }) {
     return error;
   };
 
-  // Validates the current password and requests an email address change.
+  // Change email address.
   const saveEmail = async () => {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -317,9 +309,14 @@ export default function ProfileScreen({ navigation }) {
         return;
       }
 
+      const redirectUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/profile`
+          : undefined;
+
       const { error: authError } = await supabase.auth.updateUser(
         { email: cleanEmail },
-        { emailRedirectTo: `${window.location.origin}/profile` }
+        redirectUrl ? { emailRedirectTo: redirectUrl } : undefined
       );
 
       if (authError) {
@@ -345,7 +342,7 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Validates the current password and saves a new password to Supabase.
+  // Change password.
   const savePassword = async () => {
     if (!currentPassword) {
       showAlert(
@@ -446,7 +443,7 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Signs the user out and returns them to the Login screen.
+  // Sign out.
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
 
@@ -456,6 +453,11 @@ export default function ProfileScreen({ navigation }) {
     }
 
     navigation.replace("Login");
+  };
+
+  // Navigate to the separate My Bookings screen.
+  const openMyBookings = () => {
+    navigation.navigate("MyBookings");
   };
 
   const initials = name.trim()
@@ -468,7 +470,7 @@ export default function ProfileScreen({ navigation }) {
         .toUpperCase()
     : "U";
 
-  // Displays Edit when idle and Cancel/Save actions while editing.
+  // Edit / Cancel / Save actions.
   const EditActions = ({ section, save }) =>
     editingSection === section ? (
       <View style={styles.actionRow}>
@@ -486,10 +488,7 @@ export default function ProfileScreen({ navigation }) {
           disabled={saving}
         >
           {saving ? (
-            <ActivityIndicator
-              size="small"
-              color="#FFFFFF"
-            />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.saveSmallText}>Save</Text>
           )}
@@ -501,12 +500,7 @@ export default function ProfileScreen({ navigation }) {
         onPress={() => startEditing(section)}
         disabled={editingSection !== null}
       >
-        <Feather
-          name="edit-2"
-          size={15}
-          color="#1769E0"
-        />
-
+        <Feather name="edit-2" size={15} color="#1769E0" />
         <Text style={styles.editSmallText}>Edit</Text>
       </Pressable>
     );
@@ -524,6 +518,7 @@ export default function ProfileScreen({ navigation }) {
             isWeb && styles.webContainer,
           ]}
         >
+          {/* Header */}
           <View style={styles.header}>
             <Pressable
               style={styles.backButton}
@@ -538,7 +533,6 @@ export default function ProfileScreen({ navigation }) {
 
             <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>My Profile</Text>
-
               <Text style={styles.headerSubtitle}>
                 Manage your account
               </Text>
@@ -547,6 +541,7 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.headerSpacer} />
           </View>
 
+          {/* Profile information */}
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials}</Text>
@@ -563,7 +558,6 @@ export default function ProfileScreen({ navigation }) {
 
               <View style={styles.accountBadge}>
                 <View style={styles.activeDot} />
-
                 <Text style={styles.accountBadgeText}>
                   Active Account
                 </Text>
@@ -571,6 +565,7 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
 
+          {/* Account details */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
               Account Details
@@ -581,6 +576,7 @@ export default function ProfileScreen({ navigation }) {
             </Text>
           </View>
 
+          {/* Full name */}
           <View style={styles.card}>
             <View style={styles.cardTop}>
               <View style={styles.cardIcon}>
@@ -601,10 +597,7 @@ export default function ProfileScreen({ navigation }) {
                 )}
               </View>
 
-              <EditActions
-                section="name"
-                save={saveName}
-              />
+              <EditActions section="name" save={saveName} />
             </View>
 
             {editingSection === "name" && (
@@ -623,6 +616,7 @@ export default function ProfileScreen({ navigation }) {
             )}
           </View>
 
+          {/* Email */}
           <View style={styles.card}>
             <View style={styles.cardTop}>
               <View style={styles.cardIcon}>
@@ -646,10 +640,7 @@ export default function ProfileScreen({ navigation }) {
                 )}
               </View>
 
-              <EditActions
-                section="email"
-                save={saveEmail}
-              />
+              <EditActions section="email" save={saveEmail} />
             </View>
 
             {editingSection === "email" && (
@@ -689,6 +680,7 @@ export default function ProfileScreen({ navigation }) {
             )}
           </View>
 
+          {/* Password */}
           <View style={styles.card}>
             <View style={styles.cardTop}>
               <View style={styles.cardIcon}>
@@ -703,7 +695,9 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={styles.cardLabel}>PASSWORD</Text>
 
                 {editingSection !== "password" && (
-                  <Text style={styles.cardValue}>••••••••</Text>
+                  <Text style={styles.cardValue}>
+                    ••••••••
+                  </Text>
                 )}
               </View>
 
@@ -735,8 +729,8 @@ export default function ProfileScreen({ navigation }) {
                 />
 
                 <Text style={styles.passwordHint}>
-                  At least 6 characters, with a combination of uppercase,
-                  lowercase, and number.
+                  At least 6 characters, with a combination of
+                  uppercase, lowercase, and number.
                 </Text>
 
                 <PasswordInput
@@ -751,6 +745,40 @@ export default function ProfileScreen({ navigation }) {
             )}
           </View>
 
+          {/* My Bookings */}
+          <Pressable
+            style={styles.bookingsButton}
+            onPress={openMyBookings}
+            disabled={editingSection !== null || saving}
+          >
+            <View style={styles.bookingsLeft}>
+              <View style={styles.bookingsIcon}>
+                <Feather
+                  name="calendar"
+                  size={18}
+                  color="#1769E0"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.bookingsTitle}>
+                  My Bookings
+                </Text>
+
+                <Text style={styles.bookingsSubtitle}>
+                  View your existing apartment bookings
+                </Text>
+              </View>
+            </View>
+
+            <Feather
+              name="chevron-right"
+              size={20}
+              color="#A5ADBA"
+            />
+          </Pressable>
+
+          {/* Sign Out */}
           <Pressable
             style={styles.signOutButton}
             onPress={signOut}
@@ -766,7 +794,9 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View>
-                <Text style={styles.signOutTitle}>Sign Out</Text>
+                <Text style={styles.signOutTitle}>
+                  Sign Out
+                </Text>
 
                 <Text style={styles.signOutSubtitle}>
                   Sign out of your account
@@ -1099,6 +1129,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  passwordHint: {
+    fontSize: 11,
+    color: "#8995A6",
+    marginTop: 0,
+    marginBottom: 4,
+    lineHeight: 16,
+    marginLeft: 3,
+  },
+
+  // My Bookings button
+  bookingsButton: {
+    minHeight: 68,
+    borderRadius: 17,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4EAF2",
+    paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 5,
+    marginBottom: 13,
+  },
+
+  bookingsLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  bookingsIcon: {
+    width: 39,
+    height: 39,
+    borderRadius: 11,
+    backgroundColor: "#EAF2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 11,
+  },
+
+  bookingsTitle: {
+    color: "#1769E0",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  bookingsSubtitle: {
+    color: "#A1A8B3",
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  // Sign Out button
   signOutButton: {
     minHeight: 68,
     borderRadius: 17,
@@ -1137,14 +1219,5 @@ const styles = StyleSheet.create({
     color: "#A1A8B3",
     fontSize: 10,
     marginTop: 2,
-  },
-
-  passwordHint: {
-    fontSize: 11,
-    color: "#8995A6",
-    marginTop: 0,
-    marginBottom: 4,
-    lineHeight: 16,
-    marginLeft: 3,
   },
 });

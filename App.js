@@ -12,6 +12,7 @@ import BookingScreen from "./screens/BookingScreen";
 import PaymentScreen from "./screens/PaymentScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import ResetPasswordScreen from "./screens/ResetPasswordScreen";
+import MyBookingsScreen from "./screens/MyBookingsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -78,6 +79,12 @@ export default function App() {
         <Stack.Screen
           name="ResetPassword"
           component={ResetPasswordScreen}
+        />
+
+        <Stack.Screen
+          name="MyBookings"
+          component={MyBookingsScreen}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>
