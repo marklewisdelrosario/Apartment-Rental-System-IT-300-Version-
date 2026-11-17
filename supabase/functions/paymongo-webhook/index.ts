@@ -1,7 +1,11 @@
+
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// Compare signatures without leaking where they differ.
+function jsonResponse(data: unknown, status = 200) {
+  return Response.json(data, { status });
+}
+
 function safeEqual(a: string, b: string): boolean {
   const left = new TextEncoder().encode(a);
   const right = new TextEncoder().encode(b);
@@ -17,7 +21,6 @@ function safeEqual(a: string, b: string): boolean {
   return difference === 0;
 }
 
-// Generate PayMongo's HMAC-SHA256 signature.
 async function generateSignature(
   timestamp: string,
   rawBody: string,
@@ -44,7 +47,6 @@ async function generateSignature(
     .join("");
 }
 
-// Verify PayMongo webhook signature.
 async function verifySignature(
   req: Request,
   rawBody: string,
@@ -53,34 +55,32 @@ async function verifySignature(
 ): Promise<boolean> {
   const header = req.headers.get("Paymongo-Signature");
 
-  if (!header) return false;
+  if (!header) {
+    console.error("Missing Paymongo-Signature header.");
+    return false;
+  }
 
   const parts: Record<string, string> = {};
 
   for (const part of header.split(",")) {
     const [key, ...values] = part.trim().split("=");
 
-    if (key) parts[key] = values.join("=");
+    if (key) {
+      parts[key] = values.join("=");
+    }
   }
 
   const timestamp = parts.t;
-
-  if (!timestamp || !/^\d+$/.test(timestamp)) {
-    return false;
-  }
-
-  const timestampSeconds = Number(timestamp);
-
-  if (
-    !Number.isSafeInteger(timestampSeconds) ||
-    Math.abs(Date.now() / 1000 - timestampSeconds) > 300
-  ) {
-    return false;
-  }
-
   const receivedSignature = livemode ? parts.li : parts.te;
 
-  if (!receivedSignature) return false;
+  if (
+    !timestamp ||
+    !/^\d+$/.test(timestamp) ||
+    !receivedSignature
+  ) {
+    console.error("Invalid PayMongo signature header.");
+    return false;
+  }
 
   const expectedSignature = await generateSignature(
     timestamp,
@@ -94,22 +94,33 @@ async function verifySignature(
   );
 }
 
-// Create Supabase admin client.
 function getAdminClient() {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const secretKeys = JSON.parse(
-    Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}",
-  );
+  const url = Deno.env.get("SUPABASE_URL");
 
-  const secretKey =
-    secretKeys.default ??
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  let parsedSecrets: any = {};
 
-  if (!supabaseUrl || !secretKey) {
-    throw new Error("Supabase server credentials are missing.");
+  try {
+    const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+
+    if (raw) {
+      parsedSecrets = JSON.parse(raw);
+    }
+  } catch {
+    console.error("Could not parse SUPABASE_SECRET_KEYS.");
   }
 
-  return createClient(supabaseUrl, secretKey, {
+  const secret =
+    (typeof parsedSecrets === "string" ? parsedSecrets : null) ??
+    parsedSecrets?.default ??
+    parsedSecrets?.service_role ??
+    Deno.env.get("SUPABASE_SECRET_KEY") ??
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!url || !secret) {
+    throw new Error("Supabase admin credentials are missing.");
+  }
+
+  return createClient(url, secret, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -119,9 +130,9 @@ function getAdminClient() {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
-    return Response.json(
+    return jsonResponse(
       { error: "Method not allowed." },
-      { status: 405 },
+      405,
     );
   }
 
@@ -129,74 +140,73 @@ Deno.serve(async (req: Request) => {
     const webhookSecret = Deno.env.get("PAYMONGO_WEBHOOK_SECRET");
 
     if (!webhookSecret) {
-      console.error("PAYMONGO_WEBHOOK_SECRET is missing.");
-
-      return Response.json(
-        { error: "Webhook is not configured." },
-        { status: 500 },
-      );
+      throw new Error("PAYMONGO_WEBHOOK_SECRET is missing.");
     }
 
-    // Read the raw body before parsing it.
+    // Read the raw body before parsing because the signature
+    // is calculated using the original request body.
     const rawBody = await req.text();
 
-    // Verify JSON format.
     let payload: any;
 
     try {
       payload = JSON.parse(rawBody);
     } catch {
-      return Response.json(
+      return jsonResponse(
         { error: "Invalid JSON payload." },
-        { status: 400 },
+        400,
       );
     }
 
-    // PayMongo event structure.
     const eventAttributes = payload?.data?.attributes;
 
     const eventType = eventAttributes?.type;
     const livemode = eventAttributes?.livemode;
 
-    // Ignore events unrelated to successful Checkout Sessions.
-    if (eventType !== "checkout_session.payment.paid") {
-      return Response.json({
-        received: true,
-        ignored: true,
-      });
-    }
-
     if (typeof livemode !== "boolean") {
-      return Response.json(
+      return jsonResponse(
         { error: "Missing payment environment information." },
-        { status: 400 },
+        400,
       );
     }
 
-    // This integration currently accepts TEST payments only.
+    // This project currently uses Test Mode only.
     if (livemode !== false) {
-      return Response.json(
-        { error: "Unexpected live-mode payment event." },
-        { status: 400 },
+      return jsonResponse(
+        { error: "Unexpected live-mode event." },
+        400,
       );
     }
 
-    // Verify signature before processing the payment.
-    const validSignature = await verifySignature(
+    const signatureValid = await verifySignature(
       req,
       rawBody,
       webhookSecret,
       livemode,
     );
 
-    if (!validSignature) {
-      return Response.json(
+    if (!signatureValid) {
+      console.error("Webhook signature verification failed.");
+
+      return jsonResponse(
         { error: "Invalid webhook signature." },
-        { status: 401 },
+        401,
       );
     }
 
-    // Extract Checkout Session.
+    console.log("PayMongo event received:", eventType);
+
+    // Ignore unrelated events.
+    if (eventType !== "checkout_session.payment.paid") {
+      return jsonResponse({
+        received: true,
+        ignored: true,
+        event_type: eventType,
+      });
+    }
+
+    // PayMongo's checkout event contains the Checkout Session
+    // inside attributes.data.
     const session = eventAttributes?.data;
     const sessionAttributes = session?.attributes;
 
@@ -208,143 +218,216 @@ Deno.serve(async (req: Request) => {
       typeof sessionId !== "string" ||
       typeof referenceNumber !== "string"
     ) {
-      return Response.json(
+      return jsonResponse(
         { error: "Invalid Checkout Session information." },
-        { status: 400 },
+        400,
       );
     }
 
-    // Find the successful payment attempt.
-    const paidPayment = sessionAttributes?.payments?.find(
-      (item: any) => item.attributes?.status === "paid",
+    const payments = Array.isArray(sessionAttributes?.payments)
+      ? sessionAttributes.payments
+      : [];
+
+    const paidPayment = payments.find(
+      (item: any) => item?.attributes?.status === "paid",
     );
 
     if (!paidPayment) {
-      return Response.json(
-        { error: "No successful payment found." },
-        { status: 400 },
+      return jsonResponse(
+        { error: "No successful payment was found." },
+        400,
       );
     }
 
     const paymentAttributes = paidPayment.attributes;
 
-    const paidAmount = paymentAttributes?.amount;
-
+    const paidAmount = Number(paymentAttributes?.amount);
     const paidCurrency = paymentAttributes?.currency;
 
     if (
       !Number.isSafeInteger(paidAmount) ||
+      paidAmount <= 0 ||
       paidCurrency !== "PHP"
     ) {
-      return Response.json(
+      return jsonResponse(
         { error: "Invalid payment amount or currency." },
-        { status: 400 },
+        400,
       );
     }
 
-    // Connect to Supabase.
-    const supabase = getAdminClient();
+    const admin = getAdminClient();
 
-    // Find payment by Checkout Session ID.
-    const { data: payment, error: lookupError } = await supabase
+    // Find the payment using the Checkout Session ID.
+    const { data: payment, error: lookupError } = await admin
       .from("payments")
-      .select("id, booking_id, payment_status, amount, currency")
+      .select(`
+        id,
+        booking_id,
+        payment_status,
+        amount,
+        currency,
+        receipt_number
+      `)
       .eq("paymongo_checkout_session_id", sessionId)
       .maybeSingle();
 
-    if (lookupError) throw lookupError;
+    if (lookupError) {
+      console.error("Payment lookup failed:", lookupError.message);
+      throw lookupError;
+    }
 
     if (!payment) {
-      return Response.json(
+      console.error("Payment record not found:", sessionId);
+
+      return jsonResponse(
         { error: "Payment record not found." },
-        { status: 404 },
+        404,
       );
     }
 
-    // Verify booking reference.
-    if (referenceNumber !== `BOOKING-${payment.booking_id}`) {
-      return Response.json(
+    // Validate the reference number against our booking.
+    const expectedReference = `BOOKING-${payment.booking_id}`;
+
+    if (referenceNumber !== expectedReference) {
+      console.error("Reference mismatch:", {
+        received: referenceNumber,
+        expected: expectedReference,
+      });
+
+      return jsonResponse(
         { error: "Booking reference mismatch." },
-        { status: 400 },
+        400,
       );
     }
 
-    // Verify rental amount and currency.
-    const expectedAmount = Math.round(Number(payment.amount) * 100);
+    // PayMongo amount is in centavos.
+    const expectedAmount = Math.round(
+      Number(payment.amount) * 100,
+    );
 
     if (
       !Number.isSafeInteger(expectedAmount) ||
       paidAmount !== expectedAmount ||
-      payment.currency !== paidCurrency ||
       payment.currency !== "PHP"
     ) {
-      console.error("Payment amount or currency mismatch.");
+      console.error("Payment amount mismatch:", {
+        paidAmount,
+        expectedAmount,
+        currency: paidCurrency,
+      });
 
-      return Response.json(
+      return jsonResponse(
         { error: "Payment amount or currency mismatch." },
-        { status: 400 },
+        400,
       );
     }
 
-    // Update payment only if it is still pending.
+    const paidAt =
+      paymentAttributes?.paid_at &&
+      Number.isFinite(Number(paymentAttributes.paid_at))
+        ? new Date(
+            Number(paymentAttributes.paid_at) * 1000,
+          ).toISOString()
+        : new Date().toISOString();
+
+    const receiptNumber =
+      payment.receipt_number ||
+      `SAR-${payment.booking_id}-${Date.now()}`;
+
+    const paymentMethod =
+      paymentAttributes?.source?.type ??
+      paymentAttributes?.payment_method_used ??
+      null;
+
+    // Only update if the payment has not already been marked paid.
     if (payment.payment_status !== "paid") {
       const { data: updatedPayment, error: updateError } =
-        await supabase
+        await admin
           .from("payments")
           .update({
             payment_status: "paid",
-            payment_method: paymentAttributes?.source?.type ?? null,
-            paid_at: new Date().toISOString(),
+            payment_method: paymentMethod,
+            paid_at: paidAt,
+            receipt_number: receiptNumber,
           })
           .eq("id", payment.id)
-          .eq("payment_status", "pending")
+          .neq("payment_status", "paid")
           .select("id")
           .maybeSingle();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error(
+          "Payment update failed:",
+          updateError.message,
+        );
+        throw updateError;
+      }
 
-      // Another webhook delivery may have updated it first.
       if (!updatedPayment) {
-        const { data: latestPayment, error: latestError } =
-          await supabase
-            .from("payments")
-            .select("payment_status")
-            .eq("id", payment.id)
-            .single();
-
-        if (latestError) throw latestError;
-
-        if (latestPayment.payment_status !== "paid") {
-          throw new Error("Payment could not be marked as paid.");
-        }
+        console.log(
+          "Payment was already updated by another webhook attempt.",
+        );
       }
     }
 
-    // Confirm booking after payment is verified.
-    const { error: bookingError } = await supabase
+    // Verify that the payment really is saved as paid.
+    const { data: finalPayment, error: finalError } =
+      await admin
+        .from("payments")
+        .select("payment_status, receipt_number")
+        .eq("id", payment.id)
+        .single();
+
+    if (finalError) throw finalError;
+
+    if (finalPayment.payment_status !== "paid") {
+      throw new Error(
+        "Payment status was not successfully updated.",
+      );
+    }
+
+    // Confirm the booking only after the payment is verified.
+    const { error: bookingError } = await admin
       .from("bookings")
       .update({ status: "confirmed" })
       .eq("id", payment.booking_id);
 
-    if (bookingError) throw bookingError;
+    if (bookingError) {
+      console.error(
+        "Booking confirmation failed:",
+        bookingError.message,
+      );
+      throw bookingError;
+    }
 
-    console.log(
-      `Payment confirmed for booking ${payment.booking_id}`,
-    );
+    console.log("--------------------------------");
+    console.log("PAYMENT SUCCESSFULLY VERIFIED");
+    console.log("Booking ID:", payment.booking_id);
+    console.log("Payment ID:", payment.id);
+    console.log("Payment Status: paid");
+    console.log("Receipt:", finalPayment.receipt_number);
+    console.log("--------------------------------");
 
-    return Response.json({
+    return jsonResponse({
       received: true,
       success: true,
       payment_status: "paid",
       booking_status: "confirmed",
       booking_id: payment.booking_id,
+      receipt_number: finalPayment.receipt_number,
     });
   } catch (error) {
-    console.error("Webhook processing error:", error);
+    console.error("WEBHOOK PROCESSING ERROR:", error);
 
-    return Response.json(
-      { error: "Webhook processing failed." },
-      { status: 500 },
+    return jsonResponse(
+      {
+        received: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Webhook processing failed.",
+      },
+      500,
     );
   }
 });
