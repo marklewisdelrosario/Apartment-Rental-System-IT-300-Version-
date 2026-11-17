@@ -26,7 +26,7 @@ import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../services/supabase";
 
 // --------------------------------------------------
-// FUNCTION ERROR HANDLER
+// ERROR HANDLER
 // --------------------------------------------------
 
 async function getFunctionError(error) {
@@ -62,10 +62,6 @@ export default function PaymentScreen({ route }) {
   const navigation = useNavigation();
   const params = route?.params || {};
 
-  // --------------------------------------------------
-  // BOOKING INFORMATION
-  // --------------------------------------------------
-
   const [apartment, setApartment] = useState(
     params.apartment || null
   );
@@ -90,44 +86,37 @@ export default function PaymentScreen({ route }) {
     params.totalAmount || null
   );
 
-  const initialBookingId =
+  const initialId =
     params.booking_id ||
     params.bookingId ||
     null;
 
   const [bookingId, setBookingId] = useState(
-    initialBookingId
-      ? String(initialBookingId)
-      : null
+    initialId ? String(initialId) : null
   );
-
-  // --------------------------------------------------
-  // PAYMENT INFORMATION
-  // --------------------------------------------------
 
   const [paymentStatus, setPaymentStatus] = useState(
-    initialBookingId ? "pending" : "Not yet paid"
+    initialId ? "pending" : "not_paid"
   );
 
+  const [bookingStatus, setBookingStatus] = useState("pending");
+
+  const [checkoutUrl, setCheckoutUrl] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState(null);
   const [paidAt, setPaidAt] = useState(null);
-  const [receiptNumber, setReceiptNumber] = useState(null);
   const [receiptAmount, setReceiptAmount] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
 
-  // --------------------------------------------------
-  // REFERENCES
-  // --------------------------------------------------
-
-  const statusCheckInProgress = useRef(false);
-  const appState = useRef(AppState.currentState);
   const mounted = useRef(true);
+  const statusRequestRef = useRef(null);
+  const appState = useRef(AppState.currentState);
 
   // --------------------------------------------------
-  // FORMAT HELPERS
+  // HELPERS
   // --------------------------------------------------
 
   const formatDate = (value) => {
@@ -143,9 +132,7 @@ export default function PaymentScreen({ route }) {
 
     const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
+    if (Number.isNaN(date.getTime())) return "-";
 
     return [
       date.getFullYear(),
@@ -165,24 +152,32 @@ export default function PaymentScreen({ route }) {
       .replace(/_/g, " ")
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-  // --------------------------------------------------
-  // STATUS CONDITIONS
-  // --------------------------------------------------
-
   const currentPaymentStatus = String(
     paymentStatus || ""
   ).toLowerCase();
 
+  const currentBookingStatus = String(
+    bookingStatus || ""
+  ).toLowerCase();
+
   const isPaid = currentPaymentStatus === "paid";
+
+  const isPending =
+    currentPaymentStatus === "pending" &&
+    currentBookingStatus === "pending";
+
+  const isCancelled =
+    ["cancelled", "canceled"].includes(currentPaymentStatus) ||
+    ["cancelled", "canceled"].includes(currentBookingStatus);
 
   const isFailed = [
     "failed",
-    "cancelled",
-    "canceled",
     "expired",
     "payment_failed",
     "payment_setup_failed",
   ].includes(currentPaymentStatus);
+
+  const canCancel = isPending && !isPaid;
 
   const paymentStyle = isPaid
     ? {
@@ -193,11 +188,19 @@ export default function PaymentScreen({ route }) {
         description:
           "Your payment has been received and verified.",
       }
-    : isFailed
+    : isCancelled
     ? {
         color: "#DC2626",
         background: "#FEE2E2",
         icon: "x-circle",
+        title: "Reservation Cancelled",
+        description: "This reservation has been cancelled.",
+      }
+    : isFailed
+    ? {
+        color: "#DC2626",
+        background: "#FEE2E2",
+        icon: "alert-circle",
         title: "Payment Unsuccessful",
         description:
           "Your payment was not completed successfully.",
@@ -208,7 +211,7 @@ export default function PaymentScreen({ route }) {
         icon: "clock",
         title: "Awaiting Payment",
         description:
-          "Your payment is waiting for confirmation.",
+          "Your reservation is pending payment confirmation.",
       };
 
   // --------------------------------------------------
@@ -217,144 +220,136 @@ export default function PaymentScreen({ route }) {
 
   const checkPaymentStatus = useCallback(
     async (id, silent = false) => {
-      if (!id || statusCheckInProgress.current) {
-        return;
-      }
+      if (!id || !mounted.current) return;
 
-      statusCheckInProgress.current = true;
-
-      if (!silent && mounted.current) {
-        setChecking(true);
-      }
-
-      try {
-        const numericId = Number(id);
-
-        if (
-          !Number.isSafeInteger(numericId) ||
-          numericId <= 0
-        ) {
-          throw new Error("Invalid booking reference.");
-        }
-
-        // Get booking information.
-        const {
-          data: booking,
-          error: bookingError,
-        } = await supabase
-          .from("bookings")
-          .select(`
-            id,
-            status,
-            rental_type,
-            duration,
-            start_date,
-            end_date,
-            total_amount,
-            apartment:apartments (
-              id,
-              title,
-              location,
-              image_url
-            )
-          `)
-          .eq("id", numericId)
-          .single();
-
-        if (bookingError) {
-          throw bookingError;
-        }
-
-        if (!booking) {
-          throw new Error("Booking record was not found.");
-        }
-
-        // Get payment information.
-        const {
-          data: payment,
-          error: paymentError,
-        } = await supabase
-          .from("payments")
-          .select(`
-            payment_status,
-            paid_at,
-            payment_method,
-            receipt_number,
-            amount,
-            currency
-          `)
-          .eq("booking_id", numericId)
-          .maybeSingle();
-
-        if (paymentError) {
-          throw paymentError;
-        }
+      if (statusRequestRef.current) {
+        await statusRequestRef.current;
 
         if (!mounted.current) return;
 
-        // Update screen information.
-        setBookingId(String(booking.id));
+        return checkPaymentStatus(id, silent);
+      }
 
-        setRentalType(booking.rental_type);
-        setDuration(booking.duration);
-        setStartDate(booking.start_date);
-        setEndDate(booking.end_date);
-        setTotalAmount(booking.total_amount);
+      if (!silent) {
+        setChecking(true);
+      }
 
-        if (booking.apartment) {
-          setApartment(booking.apartment);
-        }
+      const request = (async () => {
+        try {
+          const numericId = Number(id);
 
-        // Do not mark paid unless Supabase says paid.
-        setPaymentStatus(
-          payment?.payment_status || "pending"
-        );
+          if (
+            !Number.isSafeInteger(numericId) ||
+            numericId <= 0
+          ) {
+            throw new Error("Invalid booking reference.");
+          }
 
-        setPaymentMethod(
-          payment?.payment_method || null
-        );
+          const {
+            data: booking,
+            error: bookingError,
+          } = await supabase
+            .from("bookings")
+            .select(`
+              id,
+              status,
+              rental_type,
+              duration,
+              start_date,
+              end_date,
+              total_amount,
+              apartment:apartments (
+                id,
+                title,
+                location,
+                image_url
+              )
+            `)
+            .eq("id", numericId)
+            .single();
 
-        setPaidAt(payment?.paid_at || null);
+          if (bookingError) throw bookingError;
 
-        setReceiptNumber(
-          payment?.receipt_number || null
-        );
+          const {
+            data: payment,
+            error: paymentError,
+          } = await supabase
+            .from("payments")
+            .select(`
+              payment_status,
+              paid_at,
+              payment_method,
+              amount,
+              currency,
+              checkout_url
+            `)
+            .eq("booking_id", numericId)
+            .maybeSingle();
 
-        setReceiptAmount(
-          payment?.amount || null
-        );
+          if (paymentError) throw paymentError;
 
-        setStatusLoaded(true);
+          if (!mounted.current) return;
 
-        console.log("--------------------------------");
-        console.log("PAYMENT STATUS CHECK");
-        console.log("Booking ID:", booking.id);
-        console.log("Booking Status:", booking.status);
-        console.log(
-          "Payment Status:",
-          payment?.payment_status
-        );
-        console.log(
-          "Receipt Number:",
-          payment?.receipt_number
-        );
-        console.log("Paid At:", payment?.paid_at);
-        console.log("--------------------------------");
-      } catch (error) {
-        console.log(
-          "PAYMENT STATUS ERROR:",
-          error
-        );
+          setBookingId(String(booking.id));
 
-        if (!silent && mounted.current) {
-          Alert.alert(
-            "Status Check Failed",
-            error.message ||
-              "Unable to retrieve payment status."
+          setBookingStatus(
+            String(booking.status || "pending").toLowerCase()
           );
+
+          setRentalType(booking.rental_type);
+          setDuration(booking.duration);
+          setStartDate(booking.start_date);
+          setEndDate(booking.end_date);
+          setTotalAmount(booking.total_amount);
+
+          if (booking.apartment) {
+            setApartment(booking.apartment);
+          }
+
+          setPaymentStatus(
+            String(
+              payment?.payment_status || "pending"
+            ).toLowerCase()
+          );
+
+          setPaymentMethod(payment?.payment_method || null);
+          setPaidAt(payment?.paid_at || null);
+          setReceiptAmount(payment?.amount || null);
+          setCheckoutUrl(payment?.checkout_url || null);
+
+          setStatusLoaded(true);
+
+          console.log("--------------------------------");
+          console.log("PAYMENT STATUS CHECK");
+          console.log("Booking ID:", booking.id);
+          console.log("Booking Status:", booking.status);
+          console.log(
+            "Payment Status:",
+            payment?.payment_status
+          );
+          console.log("Checkout URL:", !!payment?.checkout_url);
+          console.log("--------------------------------");
+        } catch (error) {
+          console.log("PAYMENT STATUS ERROR:", error);
+
+          if (!silent && mounted.current) {
+            Alert.alert(
+              "Status Check Failed",
+              error.message ||
+                "Unable to retrieve payment status."
+            );
+          }
         }
+      })();
+
+      statusRequestRef.current = request;
+
+      try {
+        await request;
       } finally {
-        statusCheckInProgress.current = false;
+        if (statusRequestRef.current === request) {
+          statusRequestRef.current = null;
+        }
 
         if (!silent && mounted.current) {
           setChecking(false);
@@ -365,7 +360,7 @@ export default function PaymentScreen({ route }) {
   );
 
   // --------------------------------------------------
-  // GET BOOKING ID FROM NAVIGATION PARAMETERS
+  // INITIAL BOOKING ID
   // --------------------------------------------------
 
   useEffect(() => {
@@ -382,88 +377,21 @@ export default function PaymentScreen({ route }) {
   ]);
 
   // --------------------------------------------------
-  // GET BOOKING ID FROM WEB RETURN URL
-  // --------------------------------------------------
-
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-
-    try {
-      const urlParams = new URLSearchParams(
-        window.location.search
-      );
-
-      const returnedId =
-        urlParams.get("booking_id") ||
-        urlParams.get("bookingId");
-
-      if (returnedId) {
-        console.log(
-          "BOOKING ID FROM PAYMONGO RETURN:",
-          returnedId
-        );
-
-        setBookingId(String(returnedId));
-      }
-    } catch (error) {
-      console.log(
-        "Could not read payment return URL:",
-        error
-      );
-    }
-  }, []);
-
-  // --------------------------------------------------
-  // GET BOOKING ID FROM EXPO LINKING
-  // --------------------------------------------------
-
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-
-    const subscription =
-      ExpoLinking.addEventListener("url", ({ url }) => {
-        try {
-          const parsed = ExpoLinking.parse(url);
-
-          const returnedId =
-            parsed.queryParams?.booking_id ||
-            parsed.queryParams?.bookingId;
-
-          if (returnedId) {
-            console.log(
-              "BOOKING ID FROM MOBILE RETURN:",
-              returnedId
-            );
-
-            setBookingId(String(returnedId));
-          }
-        } catch (error) {
-          console.log(
-            "Could not parse mobile return URL:",
-            error
-          );
-        }
-      });
-
-    return () => subscription.remove();
-  }, []);
-
-  // --------------------------------------------------
   // INITIAL STATUS CHECK
   // --------------------------------------------------
 
   useEffect(() => {
-    if (!bookingId) return;
-
-    checkPaymentStatus(bookingId, true);
+    if (bookingId) {
+      checkPaymentStatus(bookingId, true);
+    }
   }, [bookingId, checkPaymentStatus]);
 
   // --------------------------------------------------
-  // AUTOMATIC PAYMENT STATUS REFRESH
+  // AUTOMATIC STATUS REFRESH EVERY 5 SECONDS
   // --------------------------------------------------
 
   useEffect(() => {
-    if (!bookingId || isPaid || isFailed) {
+    if (!bookingId || isPaid || isCancelled || isFailed) {
       return;
     }
 
@@ -475,6 +403,7 @@ export default function PaymentScreen({ route }) {
   }, [
     bookingId,
     isPaid,
+    isCancelled,
     isFailed,
     checkPaymentStatus,
   ]);
@@ -504,13 +433,10 @@ export default function PaymentScreen({ route }) {
     );
 
     return () => subscription.remove();
-  }, [
-    bookingId,
-    checkPaymentStatus,
-  ]);
+  }, [bookingId, checkPaymentStatus]);
 
   // --------------------------------------------------
-  // COMPONENT CLEANUP
+  // CLEANUP
   // --------------------------------------------------
 
   useEffect(() => {
@@ -522,7 +448,7 @@ export default function PaymentScreen({ route }) {
   }, []);
 
   // --------------------------------------------------
-  // BACK BUTTON
+  // BACK
   // --------------------------------------------------
 
   const handleBack = () => {
@@ -534,24 +460,69 @@ export default function PaymentScreen({ route }) {
   };
 
   // --------------------------------------------------
-  // PAYMENT STATUS BUTTON
+  // VALIDATE CHECKOUT URL
   // --------------------------------------------------
 
-  const handleStatusAction = () => {
-    if (isPaid) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Home" }],
-      });
+  const isValidCheckoutUrl = (url) => {
+    try {
+      const parsed = new URL(url);
+
+      return (
+        parsed.protocol === "https:" &&
+        parsed.hostname === "checkout.paymongo.com"
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  // --------------------------------------------------
+  // OPEN CHECKOUT IN CURRENT TAB
+  // --------------------------------------------------
+
+  const openCheckout = async (url) => {
+    if (!url) {
+      const message = "Checkout link is unavailable.";
+
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert("Checkout Unavailable", message);
+      }
 
       return;
     }
 
-    checkPaymentStatus(bookingId);
+    if (!isValidCheckoutUrl(url)) {
+      const message = "The checkout URL is invalid.";
+
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert("Invalid Checkout", message);
+      }
+
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      window.location.href = url;
+      return;
+    }
+
+    try {
+      await WebBrowser.openBrowserAsync(url);
+      await checkPaymentStatus(bookingId, true);
+    } catch (error) {
+      Alert.alert(
+        "Checkout Error",
+        error.message || "Unable to open checkout."
+      );
+    }
   };
 
   // --------------------------------------------------
-  // START PAYMONGO CHECKOUT
+  // CREATE PAYMENT CHECKOUT
   // --------------------------------------------------
 
   const handlePayment = async () => {
@@ -567,7 +538,6 @@ export default function PaymentScreen({ route }) {
         "Missing Details",
         "Booking information is incomplete. Please return to the booking screen."
       );
-
       return;
     }
 
@@ -598,21 +568,6 @@ export default function PaymentScreen({ route }) {
               },
             });
 
-      const mobileRedirectUrl =
-        Platform.OS === "web"
-          ? null
-          : ExpoLinking.createURL("payment");
-
-      console.log("--------------------------------");
-      console.log("CREATING PAYMONGO CHECKOUT");
-      console.log("Apartment ID:", apartment.id);
-      console.log("Rental Type:", rentalType);
-      console.log("Duration:", duration);
-      console.log("Start Date:", formattedStartDate);
-      console.log("Success URL:", successUrl);
-      console.log("Cancel URL:", cancelUrl);
-      console.log("--------------------------------");
-
       const { data, error } =
         await supabase.functions.invoke(
           "create-paymongo-checkout",
@@ -629,87 +584,188 @@ export default function PaymentScreen({ route }) {
         );
 
       if (error) {
-        const actualError =
-          await getFunctionError(error);
-
-        console.log(
-          "EDGE FUNCTION ERROR:",
-          actualError
-        );
-
-        throw new Error(actualError);
+        throw new Error(await getFunctionError(error));
       }
 
       if (!data?.success) {
         throw new Error(
-          data?.error ||
-            "Checkout session creation failed."
+          data?.error || "Checkout session creation failed."
         );
       }
 
-      if (
-        !data?.checkout_url ||
-        !data?.booking_id
-      ) {
+      if (!data?.checkout_url || !data?.booking_id) {
         throw new Error(
           "The checkout response is missing its URL or booking ID."
         );
       }
 
-      if (
-        !data.checkout_url.startsWith(
-          "https://checkout.paymongo.com/"
-        )
-      ) {
-        throw new Error(
-          "Invalid PayMongo checkout URL."
-        );
+      if (!isValidCheckoutUrl(data.checkout_url)) {
+        throw new Error("Invalid PayMongo checkout URL.");
       }
 
       const newBookingId = String(data.booking_id);
 
-      // Save the booking ID before redirecting.
       setBookingId(newBookingId);
+      setBookingStatus("pending");
       setPaymentStatus("pending");
+      setCheckoutUrl(data.checkout_url);
       setStatusLoaded(false);
 
-      console.log(
-        "CREATED BOOKING ID:",
-        newBookingId
-      );
+      console.log("--------------------------------");
+      console.log("CREATED BOOKING ID:", newBookingId);
+      console.log("OPENING CHECKOUT IN CURRENT TAB");
+      console.log("--------------------------------");
 
       if (Platform.OS === "web") {
-        // Use the same browser tab.
-        // PayMongo redirects back to the payment screen.
         window.location.href = data.checkout_url;
-
         return;
       }
 
-      // Mobile checkout.
-      const result =
-        await WebBrowser.openAuthSessionAsync(
-          data.checkout_url,
-          mobileRedirectUrl
-        );
+      await WebBrowser.openBrowserAsync(data.checkout_url);
 
-      console.log(
-        "PAYMONGO BROWSER RESULT:",
-        result
-      );
-
-      // Verify the actual saved status.
-      await checkPaymentStatus(newBookingId);
+      await checkPaymentStatus(newBookingId, true);
     } catch (error) {
       console.log("PAYMENT ERROR:", error);
 
       Alert.alert(
         "Payment Error",
-        error.message ||
-          "Unable to start payment."
+        error.message || "Unable to start payment."
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // CANCEL CONFIRMATION
+  // --------------------------------------------------
+
+  const handleCancelBooking = () => {
+    if (!bookingId || !canCancel || cancelling) return;
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "Are you sure you want to cancel this unpaid reservation?"
+      );
+
+      if (confirmed) {
+        confirmCancelBooking();
+      }
+
+      return;
+    }
+
+    Alert.alert(
+      "Cancel Reservation",
+      "Are you sure you want to cancel this unpaid reservation?",
+      [
+        {
+          text: "Keep Reservation",
+          style: "cancel",
+        },
+        {
+          text: "Cancel Reservation",
+          style: "destructive",
+          onPress: confirmCancelBooking,
+        },
+      ]
+    );
+  };
+
+  // --------------------------------------------------
+  // CANCEL UNPAID BOOKING
+  // --------------------------------------------------
+
+  const confirmCancelBooking = async () => {
+    if (!bookingId || cancelling || !canCancel) return;
+
+    setCancelling(true);
+
+    try {
+      const numericBookingId = Number(bookingId);
+
+      if (
+        !Number.isSafeInteger(numericBookingId) ||
+        numericBookingId <= 0
+      ) {
+        throw new Error("Invalid booking reference.");
+      }
+
+      console.log("========== CANCELLATION ==========");
+      console.log("Booking ID:", numericBookingId);
+      console.log("Payment Status:", paymentStatus);
+      console.log("Booking Status:", bookingStatus);
+
+      const { data, error } = await supabase.rpc(
+        "cancel_unpaid_booking",
+        {
+          p_booking_id: numericBookingId,
+        }
+      );
+
+      console.log("RPC RESULT:", data);
+      console.log("RPC ERROR:", error);
+
+      if (error) {
+        throw error;
+      }
+
+      if (data !== true) {
+        await checkPaymentStatus(bookingId, true);
+
+        const message =
+          "This reservation could not be cancelled. It may already be paid or no longer pending.";
+
+        if (Platform.OS === "web") {
+          window.alert(message);
+        } else {
+          Alert.alert("Unable to Cancel", message);
+        }
+
+        return;
+      }
+
+      await checkPaymentStatus(bookingId, true);
+
+      if (Platform.OS === "web") {
+        window.alert(
+          "Your reservation has been cancelled successfully."
+        );
+      } else {
+        Alert.alert(
+          "Reservation Cancelled",
+          "Your unpaid reservation has been cancelled successfully."
+        );
+      }
+    } catch (error) {
+      console.log("CANCEL BOOKING ERROR:", error);
+
+      const message =
+        error?.message ||
+        "Unable to cancel this reservation.";
+
+      if (Platform.OS === "web") {
+        window.alert("Cancellation Failed: " + message);
+      } else {
+        Alert.alert("Cancellation Failed", message);
+      }
+
+      await checkPaymentStatus(bookingId, true);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // BACK TO HOME AFTER PAYMENT
+  // --------------------------------------------------
+
+  const handleStatusAction = () => {
+    if (isPaid) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Home" }],
+      });
     }
   };
 
@@ -729,7 +785,6 @@ export default function PaymentScreen({ route }) {
           <TouchableOpacity
             style={styles.backButton}
             onPress={handleBack}
-            activeOpacity={0.75}
           >
             <Feather
               name="arrow-left"
@@ -738,11 +793,8 @@ export default function PaymentScreen({ route }) {
             />
           </TouchableOpacity>
 
-          <View style={styles.headerText}>
-            <Text style={styles.title}>
-              Payment
-            </Text>
-
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Payment</Text>
             <Text style={styles.subtitle}>
               Review your reservation details.
             </Text>
@@ -769,16 +821,12 @@ export default function PaymentScreen({ route }) {
           <View style={styles.apartmentInfo}>
             {apartment?.image_url ? (
               <Image
-                source={{
-                  uri: apartment.image_url,
-                }}
+                source={{ uri: apartment.image_url }}
                 style={styles.apartmentImage}
                 resizeMode="cover"
               />
             ) : (
-              <View
-                style={styles.apartmentImagePlaceholder}
-              >
+              <View style={styles.apartmentImagePlaceholder}>
                 <Feather
                   name="home"
                   size={26}
@@ -792,7 +840,7 @@ export default function PaymentScreen({ route }) {
                 {apartment?.title || "Apartment"}
               </Text>
 
-              {apartment?.location ? (
+              {!!apartment?.location && (
                 <View style={styles.locationRow}>
                   <Feather
                     name="map-pin"
@@ -807,15 +855,7 @@ export default function PaymentScreen({ route }) {
                     {apartment.location}
                   </Text>
                 </View>
-              ) : null}
-            </View>
-
-            <View style={styles.selectedBadge}>
-              <View style={styles.selectedDot} />
-
-              <Text style={styles.selectedText}>
-                Selected
-              </Text>
+              )}
             </View>
           </View>
 
@@ -826,68 +866,40 @@ export default function PaymentScreen({ route }) {
           </Text>
 
           {[
-            {
-              label: "Rental Type",
-              value: rentalType || "-",
-              icon: "calendar",
-            },
-            {
-              label: "Duration",
-              value: duration
+            ["Rental Type", rentalType || "-"],
+            [
+              "Duration",
+              duration
                 ? `${duration} ${
                     rentalType === "Daily"
                       ? "day(s)"
                       : "month(s)"
                   }`
                 : "-",
-              icon: "clock",
-            },
-            {
-              label: "Start Date",
-              value: formatDate(startDate),
-              icon: "calendar",
-            },
-            {
-              label: "End Date",
-              value: formatDate(endDate),
-              icon: "calendar",
-            },
-          ].map((item, index, array) => (
+            ],
+            ["Start Date", formatDate(startDate)],
+            ["End Date", formatDate(endDate)],
+          ].map(([label, value], index, array) => (
             <View
-              key={item.label}
+              key={label}
               style={[
                 styles.detailRow,
                 index === array.length - 1 &&
                   styles.lastDetailRow,
               ]}
             >
-              <View style={styles.detailLeft}>
-                <View style={styles.detailIcon}>
-                  <Feather
-                    name={item.icon}
-                    size={15}
-                    color="#64748B"
-                  />
-                </View>
-
-                <Text style={styles.label}>
-                  {item.label}
-                </Text>
-              </View>
-
-              <Text style={styles.value}>
-                {item.value}
-              </Text>
+              <Text style={styles.label}>{label}</Text>
+              <Text style={styles.value}>{value}</Text>
             </View>
           ))}
         </View>
 
-        {/* TOTAL AMOUNT */}
+        {/* TOTAL */}
 
         <View style={styles.amountCard}>
           <View>
             <Text style={styles.amountLabel}>
-              Grand Total
+              Total
             </Text>
 
             <Text style={styles.amountCaption}>
@@ -902,7 +914,7 @@ export default function PaymentScreen({ route }) {
 
         {/* PAYMENT STATUS */}
 
-        {bookingId && (
+        {bookingId ? (
           <View style={styles.card}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionIcon}>
@@ -922,8 +934,7 @@ export default function PaymentScreen({ route }) {
               style={[
                 styles.mainStatusCard,
                 {
-                  backgroundColor:
-                    paymentStyle.background,
+                  backgroundColor: paymentStyle.background,
                 },
               ]}
             >
@@ -938,9 +949,7 @@ export default function PaymentScreen({ route }) {
               <Text
                 style={[
                   styles.mainStatusTitle,
-                  {
-                    color: paymentStyle.color,
-                  },
+                  { color: paymentStyle.color },
                 ]}
               >
                 {paymentStyle.title}
@@ -955,8 +964,7 @@ export default function PaymentScreen({ route }) {
                   style={[
                     styles.statusDot,
                     {
-                      backgroundColor:
-                        paymentStyle.color,
+                      backgroundColor: paymentStyle.color,
                     },
                   ]}
                 />
@@ -964,23 +972,21 @@ export default function PaymentScreen({ route }) {
                 <Text
                   style={[
                     styles.mainStatusPillText,
-                    {
-                      color: paymentStyle.color,
-                    },
+                    { color: paymentStyle.color },
                   ]}
                 >
                   {normalizeStatus(paymentStatus)}
                 </Text>
               </View>
 
-              {!statusLoaded && !isPaid && (
+              {!statusLoaded && (
                 <Text style={styles.loadingStatusText}>
                   Checking payment information...
                 </Text>
               )}
             </View>
 
-            {/* RECEIPT - ONLY WHEN SUPABASE CONFIRMS PAID */}
+            {/* RECEIPT */}
 
             {isPaid && (
               <View style={styles.receiptCard}>
@@ -1012,105 +1018,139 @@ export default function PaymentScreen({ route }) {
 
                 <View style={styles.receiptDivider} />
 
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>
-                    Receipt Number
-                  </Text>
-
-                  <Text style={styles.receiptValue}>
-                    {receiptNumber || "Generating..."}
-                  </Text>
-                </View>
-
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>
-                    Amount Paid
-                  </Text>
-
-                  <Text style={styles.receiptValue}>
-                    ₱
-                    {formatAmount(
+                {[
+                  ["Booking Reference", bookingId],
+                  [
+                    "Amount Paid",
+                    `₱${formatAmount(
                       receiptAmount || totalAmount
-                    )}
-                  </Text>
-                </View>
-
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>
-                    Payment Method
-                  </Text>
-
-                  <Text style={styles.receiptValue}>
-                    {paymentMethod
+                    )}`,
+                  ],
+                  [
+                    "Payment Method",
+                    paymentMethod
                       ? normalizeStatus(paymentMethod)
-                      : "Not available"}
-                  </Text>
-                </View>
+                      : "Not available",
+                  ],
+                  [
+                    "Payment Date",
+                    paidAt
+                      ? new Date(paidAt).toLocaleString("en-PH")
+                      : "Not available",
+                  ],
+                ].map(([label, value]) => (
+                  <View
+                    key={label}
+                    style={styles.receiptRow}
+                  >
+                    <Text style={styles.receiptLabel}>
+                      {label}
+                    </Text>
 
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>
-                    Payment Date
-                  </Text>
-
-                  <Text style={styles.receiptValue}>
-                    {paidAt
-                      ? new Date(
-                          paidAt
-                        ).toLocaleString("en-PH")
-                      : "Not available"}
-                  </Text>
-                </View>
+                    <Text style={styles.receiptValue}>
+                      {value}
+                    </Text>
+                  </View>
+                ))}
               </View>
             )}
 
-            {/* STATUS BUTTON */}
+            {/* PAY NOW AND CANCEL */}
 
-            <TouchableOpacity
-              style={[
-                styles.checkButton,
-                isPaid && styles.paidActionButton,
-              ]}
-              onPress={handleStatusAction}
-              disabled={checking && !isPaid}
-              activeOpacity={0.8}
-            >
-              {checking && !isPaid ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
+            {isPending && (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.payButton,
+                    !checkoutUrl && styles.disabledButton,
+                  ]}
+                  onPress={() => openCheckout(checkoutUrl)}
+                  disabled={!checkoutUrl}
+                  activeOpacity={0.85}
+                >
                   <Feather
-                    name={isPaid ? "home" : "refresh-cw"}
-                    size={17}
+                    name="credit-card"
+                    size={18}
                     color="#FFFFFF"
                   />
 
                   <Text style={styles.buttonText}>
-                    {isPaid
-                      ? "Back to Home"
-                      : "Refresh Payment Status"}
+                    Pay Now
                   </Text>
-                </>
-              )}
-            </TouchableOpacity>
 
-            {!isPaid && !isFailed && (
-              <Text style={styles.autoRefreshText}>
-                Automatically checking for payment updates
+                  <Feather
+                    name="arrow-right"
+                    size={17}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.cancelButton,
+                    cancelling && styles.disabledButton,
+                  ]}
+                  onPress={handleCancelBooking}
+                  disabled={cancelling || !canCancel}
+                  activeOpacity={0.85}
+                >
+                  {cancelling ? (
+                    <ActivityIndicator color="#DC2626" />
+                  ) : (
+                    <>
+                      <Feather
+                        name="x-circle"
+                        size={17}
+                        color="#DC2626"
+                      />
+
+                      <Text style={styles.cancelButtonText}>
+                        Cancel Reservation
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* BACK TO HOME - ONLY AFTER PAYMENT */}
+
+            {isPaid && (
+              <TouchableOpacity
+                style={[
+                  styles.checkButton,
+                  styles.paidActionButton,
+                ]}
+                onPress={handleStatusAction}
+                activeOpacity={0.8}
+              >
+                <Feather
+                  name="home"
+                  size={17}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.buttonText}>
+                  Back to Home
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {isCancelled && (
+              <Text style={styles.failedHelpText}>
+                This reservation is cancelled. You can return
+                to your bookings to make another reservation.
               </Text>
             )}
 
             {isFailed && (
               <Text style={styles.failedHelpText}>
-                If you believe your payment was successful,
-                refresh the status or contact the administrator.
+                Your payment was not completed. Please check
+                your bookings or contact the administrator.
               </Text>
             )}
           </View>
-        )}
-
-        {/* PROCEED TO PAYMENT */}
-
-        {!bookingId && (
+        ) : (
           <TouchableOpacity
             style={[
               styles.payButton,
@@ -1142,7 +1182,7 @@ export default function PaymentScreen({ route }) {
 
                 <Feather
                   name="arrow-right"
-                  size={18}
+                  size={17}
                   color="#FFFFFF"
                 />
               </View>
@@ -1192,15 +1232,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  headerText: {
-    flex: 1,
-  },
-
   title: {
     fontSize: 27,
     fontWeight: "800",
     color: "#172033",
-    letterSpacing: -0.7,
   },
 
   subtitle: {
@@ -1216,13 +1251,6 @@ const styles = StyleSheet.create({
     marginBottom: 17,
     borderWidth: 1,
     borderColor: "#E9EDF5",
-    shadowColor: "#172033",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
     elevation: 2,
   },
 
@@ -1246,15 +1274,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: "#1E293B",
-  },
-
-  sectionSubtitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#94A3B8",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-    marginBottom: 17,
   },
 
   apartmentInfo: {
@@ -1303,41 +1322,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  selectedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 5,
-  },
-
-  selectedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#2563EB",
-  },
-
-  selectedText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#2563EB",
-  },
-
   divider: {
     height: 1,
     backgroundColor: "#EDF0F5",
     marginVertical: 20,
   },
 
+  sectionSubtitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+    marginBottom: 12,
+  },
+
   detailRow: {
-    minHeight: 42,
+    minHeight: 40,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 8,
     gap: 12,
   },
 
@@ -1345,26 +1350,9 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
 
-  detailLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    flex: 1,
-  },
-
-  detailIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   label: {
     color: "#64748B",
     fontSize: 13,
-    fontWeight: "500",
   },
 
   value: {
@@ -1372,7 +1360,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textAlign: "right",
-    flexShrink: 0,
   },
 
   amountCard: {
@@ -1423,7 +1410,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
-    elevation: 2,
   },
 
   mainStatusTitle: {
@@ -1532,6 +1518,37 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  payButton: {
+    backgroundColor: "#2563EB",
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 5,
+  },
+
+  cancelButton: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 9,
+    marginTop: 12,
+  },
+
+  cancelButtonText: {
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
   checkButton: {
     backgroundColor: "#2563EB",
     paddingVertical: 15,
@@ -1540,18 +1557,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 9,
-    marginTop: 22,
+    marginTop: 18,
   },
 
   paidActionButton: {
     backgroundColor: "#2563EB",
-  },
-
-  autoRefreshText: {
-    textAlign: "center",
-    color: "#94A3B8",
-    fontSize: 11,
-    marginTop: 13,
   },
 
   failedHelpText: {
@@ -1560,24 +1570,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 18,
     marginTop: 13,
-  },
-
-  payButton: {
-    backgroundColor: "#2563EB",
-    paddingVertical: 17,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-    shadowColor: "#2563EB",
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 9,
-    elevation: 4,
   },
 
   buttonContent: {
@@ -1594,6 +1586,6 @@ const styles = StyleSheet.create({
   },
 
   disabledButton: {
-    opacity: 0.65,
+    opacity: 0.55,
   },
 });
