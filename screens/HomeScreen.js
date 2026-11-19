@@ -1,3 +1,4 @@
+
 import React, { useCallback, useState } from "react";
 
 import {
@@ -16,32 +17,153 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { supabase } from "../services/supabase";
 
-// Displays the apartment listings and provides navigation to other screens.
+import {
+  logActivity,
+  updateActivityLogResult,
+} from "../services/activityLogger";
+
+// Displays apartment listings and records local activity.
 export default function HomeScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isWeb = width >= 768;
 
-  // Stores the apartment listings retrieved from Supabase and tracks loading.
   const [apartments, setApartments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetches apartment listings from Supabase.
+  // Fetch apartments and record the operation locally.
   const loadApartments = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("apartments")
-      .select("*")
-      .order("id", { ascending: true });
+    let activityLogId = null;
 
-    if (!error) {
+    try {
+      // Retrieve the locally available authenticated session.
+      let userId = null;
+
+      try {
+        const { data, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn(
+            "SESSION RETRIEVAL WARNING:",
+            sessionError.message
+          );
+        }
+
+        userId = data?.session?.user?.id || null;
+      } catch (sessionError) {
+        console.warn(
+          "COULD NOT RETRIEVE SESSION:",
+          sessionError?.message
+        );
+      }
+
+      // Save activity locally BEFORE the Supabase request.
+      const logResult = await logActivity({
+        userId,
+        action: "VIEW_APARTMENTS",
+        module: "Home",
+        description: "Opened apartment listings",
+        result: "PENDING",
+        metadata: {
+          operation: "Load apartment listings",
+        },
+      });
+
+      if (logResult?.success) {
+        activityLogId = logResult.id;
+      } else {
+        console.error(
+          "FAILED TO SAVE LOCAL ACTIVITY:",
+          logResult?.error
+        );
+      }
+
+      // Request apartment listings from Supabase.
+      const { data, error } = await supabase
+        .from("apartments")
+        .select("*")
+        .order("id", { ascending: true });
+
+      if (error) {
+        console.warn("LOAD APARTMENTS FAILED:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+
+        // Update the local activity as FAILED.
+        if (activityLogId) {
+          const updateResult = await updateActivityLogResult(
+            activityLogId,
+            "FAILED",
+            {
+              error: error.message,
+              errorCode: error.code || null,
+            }
+          );
+
+          if (!updateResult?.success) {
+            console.error(
+              "FAILED TO UPDATE LOCAL ACTIVITY:",
+              updateResult?.error
+            );
+          }
+        }
+
+        return;
+      }
+
+      // Update apartment listings.
       setApartments(data || []);
-    }
 
-    setLoading(false);
+      // Update local activity as SUCCESS.
+      if (activityLogId) {
+        const updateResult = await updateActivityLogResult(
+          activityLogId,
+          "SUCCESS",
+          {
+            apartmentCount: data?.length || 0,
+          }
+        );
+
+        if (!updateResult?.success) {
+          console.error(
+            "FAILED TO UPDATE LOCAL ACTIVITY:",
+            updateResult?.error
+          );
+        }
+      }
+
+    } catch (error) {
+      console.error("UNEXPECTED HOME ERROR:", error);
+
+      // Record unexpected errors locally.
+      if (activityLogId) {
+        try {
+          await updateActivityLogResult(
+            activityLogId,
+            "FAILED",
+            {
+              error: error?.message || "Unknown error",
+            }
+          );
+        } catch (logError) {
+          console.error(
+            "FAILED TO SAVE ERROR RESULT:",
+            logError
+          );
+        }
+      }
+
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Reloads apartment listings whenever the Home screen comes into focus.
+  // Reload listings whenever Home screen comes into focus.
   useFocusEffect(
     useCallback(() => {
       loadApartments();
@@ -94,7 +216,9 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.countBadge}>
-            <Text style={styles.countText}>{apartments.length}</Text>
+            <Text style={styles.countText}>
+              {apartments.length}
+            </Text>
           </View>
         </View>
 
@@ -126,13 +250,17 @@ export default function HomeScreen({ navigation }) {
             ]}
           >
             {apartments.map((apartment) => {
-              const isAvailable = apartment.status === "Available";
+              const isAvailable =
+                apartment.status === "Available";
 
               return (
-              <View
-                key={apartment.id}
-                style={[styles.card, isWeb && styles.webCard]}
-              >
+                <View
+                  key={apartment.id}
+                  style={[
+                    styles.card,
+                    isWeb && styles.webCard,
+                  ]}
+                >
                   <View style={styles.imageContainer}>
                     <Image
                       source={{ uri: apartment.image_url }}
@@ -158,7 +286,9 @@ export default function HomeScreen({ navigation }) {
                       />
 
                       <Text style={styles.statusBadgeText}>
-                        {isAvailable ? "Available" : "Unavailable"}
+                        {isAvailable
+                          ? "Available"
+                          : "Unavailable"}
                       </Text>
                     </View>
                   </View>
@@ -191,7 +321,10 @@ export default function HomeScreen({ navigation }) {
                         ["bed", apartment.bedrooms, "Bedroom"],
                         ["shower", apartment.bathrooms, "Bathroom"],
                       ].map(([icon, value, label]) => (
-                        <View style={styles.feature} key={label}>
+                        <View
+                          style={styles.feature}
+                          key={label}
+                        >
                           <MaterialCommunityIcons
                             name={icon}
                             size={15}
@@ -207,30 +340,40 @@ export default function HomeScreen({ navigation }) {
 
                     <View style={styles.divider} />
 
-                    <Text style={styles.rateTitle}>Rental Rates</Text>
+                    <Text style={styles.rateTitle}>
+                      Rental Rates
+                    </Text>
 
                     <View style={styles.rates}>
                       <View>
-                        <Text style={styles.rateLabel}>Daily</Text>
+                        <Text style={styles.rateLabel}>
+                          Daily
+                        </Text>
 
                         <Text style={styles.rate}>
                           ₱
                           {Number(
                             apartment.daily_rate || 0
                           ).toLocaleString()}
-                          <Text style={styles.rateUnit}> /day</Text>
+                          <Text style={styles.rateUnit}>
+                            {" "}/day
+                          </Text>
                         </Text>
                       </View>
 
                       <View style={styles.rateRight}>
-                        <Text style={styles.rateLabel}>Monthly</Text>
+                        <Text style={styles.rateLabel}>
+                          Monthly
+                        </Text>
 
                         <Text style={styles.rate}>
                           ₱
                           {Number(
                             apartment.price || 0
                           ).toLocaleString()}
-                          <Text style={styles.rateUnit}> /month</Text>
+                          <Text style={styles.rateUnit}>
+                            {" "}/month
+                          </Text>
                         </Text>
                       </View>
                     </View>
@@ -238,13 +381,15 @@ export default function HomeScreen({ navigation }) {
                     <TouchableOpacity
                       style={[
                         styles.viewButton,
-                        !isAvailable && styles.viewUnavailableButton,
+                        !isAvailable &&
+                          styles.viewUnavailableButton,
                       ]}
                       activeOpacity={0.8}
                       onPress={() =>
-                        navigation.navigate("ApartmentDetails", {
-                          apartment,
-                        })
+                        navigation.navigate(
+                          "ApartmentDetails",
+                          { apartment }
+                        )
                       }
                     >
                       <Text style={styles.viewButtonText}>
